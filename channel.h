@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COPLUS_CHANNEL_H_
+#define COPLUS_CHANNEL_H_
 
 #include <thread>
 #include <functional>
@@ -9,6 +10,10 @@
 #include <iostream>
 #include <queue>
 #include <cassert>
+
+#include "colog.h"
+
+namespace coplus{
 
 using Alert = std::shared_ptr<std::condition_variable>;
 
@@ -25,21 +30,21 @@ class Channel {
 	std::mutex buffer_lock;
 	std::queue<ElementType> buffer;
 	SchedulerType scheduler;
-	std::atomic<bool> closed = false; // 1 for closed
+	std::atomic<bool> closed; // 1 for closed
  public:
 	Channel(): scheduler([&](){
-		std::atomic_init(&closed, false);
+		std::atomic_store_explicit(&closed, false, std::memory_order_relaxed);
+		// std::atomic_init(&closed, false);
 		// assert(std::atomic_load(&closed) == false);
 		while(true){
-			bool seted = false;
-			if(std::atomic_compare_exchange_strong(&closed, &seted, false)){
+			if(!std::atomic_load(&closed)){
 				// std::lock_quard<std::mutex> lock_buffer(buffer_lock);
 				buffer_lock.lock();
 				if(buffer.size() < BufferCapacity){ // refer to sendq
 					// std::lock_quard<std::mutex> lock_send(sendq_lock);
 					sendq_lock.lock(); // last sendq grated has done sending
 					if(sendq.size() > 0){
-						sendq.front()->notify_all();
+						sendq.front()->notify_one();
 						sendq.pop();
 					}
 					sendq_lock.unlock();
@@ -48,7 +53,7 @@ class Channel {
 					// std::lock_quard<std::mutex> lock_recv(recvq_lock);
 					recvq_lock.lock(); // last receiver has done receiving
 					if(recvq.size() > 0){
-						recvq.front()->notify_all();
+						recvq.front()->notify_one();
 						recvq.pop();	
 					}
 					recvq_lock.unlock();
@@ -56,7 +61,7 @@ class Channel {
 				buffer_lock.unlock();
 			}
 			else{
-				cout << "Channel closed." << endl;
+				colog << "Channel closed." ;
 				break ;
 			}	
 		}
@@ -106,10 +111,11 @@ class Channel<ElementType, 0, SchedulerType> {
 	std::mutex buffer_lock;
 	ElementType* buffer = nullptr;
 	SchedulerType scheduler;
-	std::atomic<bool> closed = false; // 1 for closed
+	std::atomic<bool> closed; // 1 for closed
  public:
 	Channel(): scheduler([&](){
-		std::atomic_init(&closed, false);
+		// std::atomic_init(&closed, false); // not implemented in gcc 4.9!
+		std::atomic_store_explicit(&closed, false, std::memory_order_relaxed);
 		// assert(std::atomic_load(&closed) == false);
 		while(true){
 			if(!std::atomic_load(&closed) ){
@@ -118,8 +124,8 @@ class Channel<ElementType, 0, SchedulerType> {
 				if(sendq.size() > 0){
 					recvq_lock.lock();
 					if(recvq.size() > 0){
-						sendq.front()->notify_all();
-						recvq.front()->notify_all();
+						sendq.front()->notify_one();
+						recvq.front()->notify_one();
 						recvq.pop();
 						sendq.pop();
 					}
@@ -128,7 +134,7 @@ class Channel<ElementType, 0, SchedulerType> {
 				sendq_lock.unlock();
 			}
 			else{
-				cout << "Channel closed." << endl;
+				colog << "Channel closed.";
 				break ;
 			}	
 		}
@@ -170,3 +176,7 @@ class Channel<ElementType, 0, SchedulerType> {
 
 template <typename ElementType, typename SchedulerType = std::thread>
 using SyncChannel = Channel<ElementType, 0, SchedulerType>;
+
+} // namespace coplus
+
+#endif // COPLUS_CHANNEL_H_
