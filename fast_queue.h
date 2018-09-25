@@ -22,30 +22,43 @@ namespace coplus{
 // - GetQueue(token)
 // - AddQueue
 // - Compact(GC) // deprecated for use of handle
-// Free List (In-Out Stack, lock)
+// Free List (In-Out Stack, non-busy structure use lock)
 // - GetFree
 // - AddFree
 // Bottom: [Single-Producer Multi-Comsumer Queue]
 // - try_push
 // - try_push_hard
 // - try_pop
+// Procedure //
+// Produce: Ask Handle -> Ask Free Queue -> Fetch or Create
+// -> Produce -> Full and Handle Transfer(need send in handle) -> Ask Free Queue and Free before
+// Consume: Ask Port -> Random and Probe (hard probe serially, weak probe 2-order)
 
 template <typename ElementType, size_t unitSize = 10>
 class PushOnlyFastStack{
-	std::vector<std::atomic<ElementType*>> stacks;
+	std::atomic<ElementType*>* stacks;
 	std::atomic<int> end; // point to the first empty slot, meaning size
-	int max_size;
+	size_t max_size;
  public:
- 	PushOnlyFastStack(size_t maxSize): stacks((maxSize+unitSize-1) / unitSize, nullptr), max_size(maxSize) {
- 		std::atomic_init(&end, 0);
+ 	PushOnlyFastStack(size_t maxSize): max_size(maxSize){
+ 		stacks = new std::atomic<ElementType*>[(maxSize+unitSize-1) / unitSize];
+ 		for(int i = 0; i < (maxSize+unitSize-1) / unitSize; i++)
+ 			stacks[i].store((int*)NULL);
+ 		end.store(0);
  	}
-	// get element
-	bool Get(int token, ElementType& ret){
+	~PushOnlyFastStack(){
+		for(int i = 0; i < (max_size+unitSize-1) / unitSize; i++){
+			delete [] stacks[i].load();
+		}
+		delete [] stacks;
+	}
+	// get element, no delete
+	bool get(int token, ElementType& ret){
 		if(token > max_size)return -1;
 		int mainSlot = token / unitSize;
 		int subSlot = token - mainSlot * unitSize;
 		ElementType* oldStack;
-		if((oldStack = std::atomic_load(stacks[mainSlot])) == nullptr){
+		if((oldStack = stacks[mainSlot].load()) == NULL){
 			return false;
 		}
 		else{
@@ -54,13 +67,13 @@ class PushOnlyFastStack{
 		}
 	}
 	// return new token
-	int Add(ElementType&& newItem){
-		int slot = std::atomic_fetch_add(&end, 1);
-		if(slot > max_size)return -1;
+	int push(ElementType&& newItem){
+		int slot = std::atomic_fetch_add(&end, 1) ;
+		if(slot >= max_size)return -1;
 		int mainSlot = slot / unitSize;
 		int subSlot = slot - mainSlot * unitSize;
 		ElementType* oldStack;
-		if((oldStack = std::atomic_load(stacks[mainSlot])) == nullptr){
+		if((oldStack = stacks[mainSlot].load()) == NULL){
 			ElementType* newStack = new ElementType[unitSize];
 			if(std::atomic_compare_exchange_strong(&stacks[mainSlot], &oldStack, newStack)){
 				// first to new
@@ -74,6 +87,10 @@ class PushOnlyFastStack{
 		return slot;
 	}
 
+	int size(void){
+		return end.load();
+	}
+
 };
 
 template <typename ElementType>
@@ -84,8 +101,8 @@ class FastStack{
 	std::mutex lock;
  public:
  	// only head=tail=0 is empty, other is full
- 	FastStack(int maxSize): max_size(maxSize), head(0), tail(0), ring(max_size) {	}
- 	bool Get(ElementType& ret){ // get and delete
+ 	FastStack(int maxSize): max_size(maxSize), head(0), tail(0), ring(maxSize) {	}
+ 	bool pop(ElementType& ret){ // get and delete
  		std::lock_guard<std::mutex> local(lock);
  		if(head == tail && tail == 0){
  			return false;
@@ -95,9 +112,10 @@ class FastStack{
  		if(head == tail){
  			head = tail = 0; // empty
  		}
- 		return ring[slot];
+ 		ret = ring[slot];
+ 		return true;
  	}
- 	bool Add(ElementType item){
+ 	bool push(ElementType item){
  		std::lock_guard<std::mutex> local(lock);
  		if(head == tail){
  			if(head == 0){
@@ -114,36 +132,24 @@ class FastStack{
  		if(head == tail && tail == 0){
  			head = tail = 1; // no equal 0
  		}
+ 		return true;
+ 	}
+ 	size_t size(void){
+ 		std::lock_guard<std::mutex> local(lock);
+ 		if(head == tail && tail == 0)return 0;
+ 		if(head == tail)return max_size;
+ 		if(head > tail)return tail - head + max_size;
+ 		return tail - head;
  	}
 };
 
-template <typename ElementType>
-struct FastQueueBuffer: {
-	ElementType* data;
-	size_t size; // elements
-	FastQueueBuffer(size_t size): size(size){
-		data = new ElementType[size];
-	}
-	~FastQueueBuffer(){delete [] data;}
-	void recap(size_t newSize, bool copy = true){
-		ElementType* newData = new ElementType[newSize];
-		if(!newData)
-		if(copy)memcpy((void*)newData, (void*)data, sizeof(ElementType) * std::min(size, newSize));
-		size = newSize;
-		delete [] data;
-		data = newData;
-		return ;
-	}
-	ElementType& operator[](size_t index){
-		return data[index];
-	}
-};
 
 template <typename ElementType>
 class FastLocalQueue{
 	// not implemented
 };
 
+/*
 // unordered unlimited queue without sync needed
 // maintain thread local order
 // provide basic interface of <<, >>, non-blocking
@@ -193,7 +199,7 @@ class FastQueue{
 };
 
 
-
+*/
 
 
 // Old implementation with mutex like atomic flag

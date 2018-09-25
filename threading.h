@@ -41,7 +41,9 @@ struct FiberTask: public Task{
 
 class Machine{ // simple encap of thread
 	std::thread t_;
-	std::atomic<bool>* close_;
+	std::atomic<bool>* close_; // using pointer for CopyAssign used in container
+	// asserting access to close happen in valid range
+	// asserting thread.empty == close_
  public:
 	template <typename FunctionType>
 	Machine(FunctionType&& scheduler): close_(new std::atomic<bool>(false)){
@@ -57,9 +59,23 @@ class Machine{ // simple encap of thread
 		rhs.close_ = nullptr;
 	}
 	Machine(const Machine& rhs) = delete;
+	// for container resize larger which is deprecated
+ 	Machine(): close_(new std::atomic<bool>(true)) { }
+ 	// just a matching interface
+ 	template <typename FunctionType>
+ 	bool restart(FunctionType&& scheduler){
+ 		if(!close_->load())return false;
+ 		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler)](){
+	 		while( !close->load() ){
+				schedule();
+	 		}
+		}));
+		return true;
+ 	}
 	~Machine() { delete close_; }
 	void join(void){
-		atomic_store(close_, true);
+		if(close_->load())return; // already closed
+		atomic_store(close_, true); // send out signal to thread
 		t_.join();
 	}
 };
@@ -69,9 +85,12 @@ class ThreadPool{
 	std::vector<Machine> machines;
 	// std::vector<std::thread> machines;
 	std::mutex lock;
+	size_t threadSize;
+	std::mutex mutating;
  public:
  	ThreadPool(){
- 		for(int i = 0; i < std::thread::hardware_concurrency(); i++){
+ 		threadSize = std::thread::hardware_concurrency();
+ 		for(int i = 0; i < threadSize; i++){
  			machines.push_back( //std::thread(
  				[&](){
  					lock.lock();
@@ -85,6 +104,30 @@ class ThreadPool{
  		}
  	}
  	~ThreadPool(){ }
+ 	void resize(size_t newSize){
+ 		std::lock_guard<std::mutex> local(mutating);
+ 		if(newSize < threadSize){
+			std::for_each(machines.begin() + newSize, machines.end(), std::mem_fn(&Machine::join));
+ 			// machines.erase(machines.begin() + newSize, machines.end()); // cannot use erase
+ 			machines.resize(newSize);
+ 		}
+ 		else if(newSize > threadSize){
+ 			for(int i = threadSize; i < newSize; i++){
+ 				machines.push_back(
+	 				[&](){
+	 					lock.lock();
+			 			if(tasks.size()){
+				 			tasks.front()->call();
+				 			tasks.pop();
+			 			}
+			 			lock.unlock();
+	 				}
+	 			);
+ 			}
+ 		}
+ 		threadSize = newSize;
+ 		return ;
+ 	}
  	void close(void){
 		std::for_each(machines.begin(), machines.end(), std::mem_fn(&Machine::join));
  	}
@@ -93,11 +136,6 @@ class ThreadPool{
 	static std::thread NewThread(std::function<T>&& func){
 		std::thread temp(std::move(func));
 		return std::move(temp);
-	}
-	template <typename FunctionType>
-	static std::packaged_task<typename std::result_of<FunctionType()>::type()> NewFuture(FunctionType&& f){
-		using ResultType = typename std::result_of<FunctionType()>::type;
-		return std::packaged_task<ResultType()>(std::move(f));
 	}
 
 	// for function with return value
