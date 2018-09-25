@@ -19,7 +19,7 @@ using namespace coplus;
 // naive test for single thread
 TEST(ChannelTest, BufferChannel){
 	Channel<int, 3> chan;
-	ThreadPool<> pool;	
+	ThreadPool pool;	
 
 	int a = corand.Int(100);
 	int b = corand.Int(100);
@@ -82,13 +82,13 @@ TEST(ChannelTest, SyncChannel){
 			return ret;
 		})
 	);
-	auto sender1 = ThreadPool<>::NewThread(
+	auto sender1 = ThreadPool::NewThread(
 		std::function<void(void)>([&]{
 			colog << "Running send1";
 			chan << a;
 		})
 	);
-	auto sender2 = ThreadPool<>::NewThread(
+	auto sender2 = ThreadPool::NewThread(
 		std::function<void(void)>([&]{
 			colog << "Running send2";
 			chan << b; 
@@ -112,7 +112,7 @@ TEST(ChannelTest, SyncChannel){
 // 	// Channel<int, 0> chan;
 // 	SyncChannel<int> chan;
 // 	cout << "Create two threads" << endl;
-// 	auto recv1 = ThreadPool<>::NewThread(
+// 	auto recv1 = ThreadPool::NewThread(
 // 		std::function<void(void)>([&]{
 // 			int ret;
 // 			colog << " needs.";
@@ -120,7 +120,7 @@ TEST(ChannelTest, SyncChannel){
 // 			colog << ("Thread 1 (recv): " + std::to_string(ret));
 // 		})
 // 	);
-// 	auto recv2 = ThreadPool<>::NewThread(
+// 	auto recv2 = ThreadPool::NewThread(
 // 		std::function<void(void)>([&]{
 // 			int ret;
 // 			colog << " needs.";
@@ -128,14 +128,14 @@ TEST(ChannelTest, SyncChannel){
 // 			colog << ("Thread 2 (recv): " + std::to_string(ret));
 // 		})
 // 	);
-// 	auto sender1 = ThreadPool<>::NewThread(
+// 	auto sender1 = ThreadPool::NewThread(
 // 		std::function<void(void)>([&]{
 // 			colog << " give.";
 // 			chan << 1; 
 // 			colog << "Thread 1 (sending)";
 // 		})
 // 	);
-// 	auto sender2 = ThreadPool<>::NewThread(
+// 	auto sender2 = ThreadPool::NewThread(
 // 		std::function<void(void)>([&]{
 // 			colog << " give.";
 // 			chan << 2; 

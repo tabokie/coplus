@@ -1,17 +1,28 @@
-#include <gtest/gtest.h>
+// #include <gtest/gtest.h>
 
 #include "threading.h"
+#include "corand.h"
+#include "colog.h"
 #include <iostream>
+#include <cassert>
 
-TEST(SingleThreadTest, CreateSingleThread){
-	int callbackValue = -1;
-	Thread newThread(function<()>([&]{callbackValue = 0;}));
-	newThread.join();
-	EXPECT_EQ(callbackValue, 0);
-}
-TEST(SingleThreadTest, SingleThreadReturnValue){
-	int retValue = -1;
-	Thread newThread(function<int()>([]{return 0;}));
-	newThread.join();
-	EXPECT_EQ(newThread.fetch(), 0);
+using namespace coplus;
+
+
+
+int main(void){
+	ThreadPool pool;
+	int a = -1;
+	auto ret = pool.submit(
+		std::function<int(void)>([&]{
+			a = corand.UInt(100);
+			return a;
+		})
+	);
+	int retVal = ret.get();
+	colog << retVal;
+	colog << a;
+	pool.close();
+	assert(retVal == a);
+	return 0;
 }

@@ -6,61 +6,87 @@
 #include <queue>
 #include <type_traits>
 #include <future>
+#include <algorithm>
 
 #include "colog.h"
 
 namespace coplus {
 
-struct TaskBase {
-	struct TaskFunctionBase {
-		virtual void call() = 0;
-		virtual ~TaskFunctionBase() {}
-	};
-	std::unique_ptr<TaskFunctionBase> function;
-	template <typename FunctionType>
-	struct TaskFunction: public TaskFunctionBase	{
-		TaskFunction(FunctionType&& f): f_(std::move(f)) { }
-		~TaskFunction(){ }
-		void call(){
-			f_();
-		}        
-		FunctionType f_;
-	};
-	template <typename FunctionType>
-	TaskBase(FunctionType&& f): function(new TaskFunction<FunctionType>(std::move(f))) { }
-	TaskBase(TaskBase&& that): function(std::move(that.function)) { }
-	TaskBase(const TaskBase&) = delete;
-	void operator()(){
-		function->call();
-	}
-	virtual ~TaskBase() { }
+struct Task {
+	virtual bool call() = 0; // return false if not completed
+	virtual ~Task() {}
 };
 
-template <typename SchedulerType = std::thread>
-class ThreadPool{
-	std::queue<TaskBase> tasks;
-	// std::vector<Machine> machines;
-	SchedulerType scheduler;
-	std::atomic<bool> closed;
+// blocking function
+template <typename FunctionType>
+struct FunctionTask: public Task	{
+	FunctionTask(FunctionType&& f): f_(std::move(f)) { }
+	~FunctionTask(){ }
+	bool call(){
+		f_();
+		return true;
+	}
+	FunctionType f_;
+};
+
+// fiber
+struct FiberTask: public Task{
+	FiberTask() = default;
+	~FiberTask() { }
+	bool call(){
+		// not implemented
+		return false;
+	}
+};
+
+class Machine{ // simple encap of thread
+	std::thread t_;
+	std::atomic<bool>* close_;
  public:
- 	ThreadPool(): scheduler([&](){
- 		colog << "scheduler on";
- 		colog << tasks.size();
- 		std::atomic_store_explicit(&closed, false, std::memory_order_relaxed);
- 		while(!std::atomic_load(&closed) || tasks.size() ){
- 			colog << "loop";	
- 			if(tasks.size()){
-	 			tasks.front()();
-	 			tasks.pop();	
- 			}
+	template <typename FunctionType>
+	Machine(FunctionType&& scheduler): close_(new std::atomic<bool>(false)){
+		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler)](){
+	 		while( !close->load() ){
+				schedule();
+	 		}
+		}));
+	}
+	// required for container
+	Machine(Machine&& rhs) : t_(std::move(rhs.t_)){
+		close_ = rhs.close_;
+		rhs.close_ = nullptr;
+	}
+	Machine(const Machine& rhs) = delete;
+	~Machine() { delete close_; }
+	void join(void){
+		atomic_store(close_, true);
+		t_.join();
+	}
+};
+
+class ThreadPool{
+	std::queue<std::shared_ptr<Task> > tasks;
+	std::vector<Machine> machines;
+	// std::vector<std::thread> machines;
+	std::mutex lock;
+ public:
+ 	ThreadPool(){
+ 		for(int i = 0; i < std::thread::hardware_concurrency(); i++){
+ 			machines.push_back( //std::thread(
+ 				[&](){
+ 					lock.lock();
+		 			if(tasks.size()){
+			 			tasks.front()->call();
+			 			tasks.pop();
+		 			}
+		 			lock.unlock();
+ 				}
+ 			);
  		}
- 		colog << "scheduler off" ;
- 	}){
- 		scheduler.detach();
  	}
  	~ThreadPool(){ }
  	void close(void){
- 		std::atomic_store(&closed, true);
+		std::for_each(machines.begin(), machines.end(), std::mem_fn(&Machine::join));
  	}
  	// quick new
 	template <typename T>
@@ -82,7 +108,8 @@ class ThreadPool{
 		using ResultType = typename std::result_of<FunctionType()>::type;
 		std::packaged_task<ResultType()> packaged_f(std::move(f));
 		auto ret = packaged_f.get_future();
-		tasks.push(std::move(packaged_f));
+		std::lock_guard<std::mutex> local(lock);
+		tasks.push(std::make_shared<FunctionTask<std::packaged_task<ResultType()>>>(std::move(packaged_f)));
 		return ret;
 	}
 	// for void return function
@@ -90,7 +117,8 @@ class ThreadPool{
 	typename FunctionType, 
 	typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType()>::type>::value>::type >
 	void submit(FunctionType&& f){
-		tasks.push(std::move(f));
+		std::lock_guard<std::mutex> local(lock);
+		tasks.push(std::make_shared<FunctionTask<FunctionType>>(std::move(f)));
 	}
 
 };

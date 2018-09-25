@@ -5,6 +5,9 @@
 #include <mutex>
 #include <iostream>
 #include <functional>
+#include <string>
+#include <atomic>
+#include <cstdio>
 
 namespace coplus {
 
@@ -20,7 +23,7 @@ class ThreadInfo{
 	}
 	static int thread_id(void){
 		static std::atomic<int> id(0);
-		thread_local int thread_id = std::atomic_fetch_add_explicit(&id, 1, std::memory_order_relaxed);
+		thread_local int thread_id = std::atomic_fetch_add(&id, 1);
 		return thread_id;
 		// return hasher(std::this_thread::get_id());
 	}
@@ -29,6 +32,10 @@ class ThreadInfo{
 class Colog{
 	std::mutex lk;
  public:
+ 	Colog(){
+ 		std::ios::sync_with_stdio(false);
+		std::cin.tie(0);
+ 	}
  	template <typename T>
  	Colog& operator<<(const T& x){
  		std::lock_guard<std::mutex> local(lk);
