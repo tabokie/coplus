@@ -80,6 +80,36 @@ class Machine{ // simple encap of thread
 	}
 };
 
+/*
+// landmark for coroutine //
+// Coroutine have to be stored globally into a buffer
+Fiber::yield(condv){
+	condv->register(GetCurrentFiber());
+	SwitchToFiber(mainFiber); // mainFiber is parameter passed to function
+}
+Fiber::return(){
+	return GetFiberData()->SetEmpty();
+}
+condv::notify(){
+	SwitchToFiber(registered[0]); // can call fiber created by other thread
+}
+Machine::Schedule(){
+	if(task.coroutine());
+	moveTaskToStatic(task); // maybe init in static area, saving archive shared pointer
+	task->addData(thisFiber);
+	sonFiber = CreateFiber(0, &(task.front()->call(LPVOID)), task->dataPtr());
+	SwitchToFiber(sonFiber);
+	if(Task.finished())pop();
+}
+Thread::Cleaner(){
+	for(ptr : GlobalArea){
+		if(ptr->dead())erase(ptr);
+	}
+}
+*/
+
+
+
 class ThreadPool{
 	std::queue<std::shared_ptr<Task> > tasks;
 	std::vector<Machine> machines;

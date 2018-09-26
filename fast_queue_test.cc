@@ -85,11 +85,59 @@ int TestFastStack(){
 	t2.join();
 	t3.join();
 	assert(stack.size() == pushSize0 + pushSize1 - popSize1 - popSize0 );
+	return 0;
+}
+
+int TestLocalQueue(){
+	FastLocalQueue<int, 50> queue;
+	int pushSize = corand.UInt(50);
+	int popSize0 = corand.UInt(pushSize / 3);
+	int popSize1 = corand.UInt(pushSize - popSize0);
+	// int popSize2 = corand.UInt(pushSize - popSize0 - popSize1);
+	int popSize2 = (pushSize - popSize0 - popSize1);
+	auto t0 = ThreadPool::NewThread(
+		function<int(void)>([&]{
+			for(int i = 0; i < pushSize; i++)
+				while(!queue.push(9)){}
+			return 0;
+		})
+	);
+	auto t1 = ThreadPool::NewThread(
+		function<int(void)>([&]{
+			int ret;
+			for(int i = 0; i < popSize0; i++)
+				while(!queue.pop(ret)){}
+			return 0;
+		})
+	);
+	auto t2 = ThreadPool::NewThread(
+		function<int(void)>([&]{
+			int ret;
+			for(int i = 0; i < popSize1; i++)
+				while(!queue.pop(ret)){};
+			return 0;
+		})
+	);
+	auto t3 = ThreadPool::NewThread(
+		function<int(void)>([&]{
+			int ret;
+			for(int i = 0; i < popSize2; i++)
+				while(!queue.pop(ret)){};
+			return 0;
+		})
+	);
+
+	t0.join();
+	t1.join();
+	t2.join();
+	t3.join();
+	assert(queue.size() == pushSize - popSize2 - popSize1 - popSize0 );
+	return 0;
 }
 
 int main(void){
 	// return TestPushOnlyFastStack();
-	auto ret = TestFastStack();
+	auto ret = TestLocalQueue();
 	cout << "Safely exit..." << endl;
 	return ret;
 }

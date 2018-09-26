@@ -42,6 +42,14 @@ class Colog{
  		std::cout << ThreadInfo::thread_string() << x << std::endl;
  		return *this;
  	}
+ 	template <class ...Args>
+ 	Colog& put_batch(Args... xs){
+ 		std::lock_guard<std::mutex> local(lk);
+ 		std::cout << ThreadInfo::thread_string();
+ 		int temp[] = { ((std::cout << xs), std::cout <<", " , 0 )... };
+ 		std::cout << std::endl;
+ 		return *this;
+ 	}
 };
 
 }
