@@ -135,9 +135,70 @@ int TestLocalQueue(){
 	return 0;
 }
 
+int TestFastQueue(void){
+	FastQueue<int> queue;
+	int pushSize0 = corand.UInt(50);
+	int pushSize1 = corand.UInt(50);
+	int pushSize = pushSize0 + pushSize1;
+	int popSize0 = corand.UInt(pushSize / 3);
+	int popSize1 = corand.UInt(pushSize - popSize0);
+	int popSize2 = (pushSize - popSize0 - popSize1);
+	// hard pusher
+	auto t0 = ThreadPool::NewThread(
+		function<int(void)>([&]{
+			FastQueue<int>::ProducerHandle handle(&queue);
+			for(int i = 0; i < pushSize0; i++)
+				while(!handle.push_hard(9)){}
+			return 0;
+		})
+	);
+	// weak pusher
+	auto t1 = ThreadPool::NewThread(
+		function<int(void)>([&]{
+			FastQueue<int>::ProducerHandle handle(&queue);
+			for(int i = 0; i < pushSize1; i++)
+				while(!handle.push_hard(9)){}
+			return 0;
+		})
+	);
+	// hard popper
+	auto t2 = ThreadPool::NewThread(
+		function<int(void)>([&]{
+			int ret;
+			for(int i = 0; i < popSize1; i++)
+				while(!queue.pop_hard(ret)){};
+			return 0;
+		})
+	);
+	auto t3 = ThreadPool::NewThread(
+		function<int(void)>([&]{
+			int ret;
+			for(int i = 0; i < popSize2; i++)
+				while(!queue.pop_hard(ret)){};
+			return 0;
+		})
+	);
+	auto t4 = ThreadPool::NewThread(
+		function<int(void)>([&]{
+			int ret;
+			for(int i = 0; i < popSize2; i++)
+				while(!queue.pop_hard(ret)){};
+			return 0;
+		})
+	);
+
+	t0.join();
+	t1.join();
+	t2.join();
+	t3.join();
+	t4.join();
+	// assert(queue.size() == pushSize - popSize2 - popSize1 - popSize0 );
+	return 0;
+}
+
 int main(void){
 	// return TestPushOnlyFastStack();
-	auto ret = TestLocalQueue();
+	auto ret = TestFastQueue();
 	cout << "Safely exit..." << endl;
 	return ret;
 }

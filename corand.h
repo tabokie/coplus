@@ -18,8 +18,8 @@ class Random{
 	void SetSeed(int seed){
 		gen_.seed(seed);
 	}
-	int UInt(int max){
-		return static_cast<int>(double_dist_(gen_) * max);
+	unsigned int UInt(unsigned int max){
+		return static_cast<unsigned int>(double_dist_(gen_) * max);
 	}
 	int Int(int max){ // [-max, max]
 		return (double_dist_(gen_) * 2 - 1) * max;

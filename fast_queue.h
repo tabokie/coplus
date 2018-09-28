@@ -43,7 +43,7 @@ class PushOnlyFastStack{
  	PushOnlyFastStack(size_t maxSize): max_size(maxSize){
  		stacks = new std::atomic<ElementType*>[(maxSize+unitSize-1) / unitSize];
  		for(int i = 0; i < (maxSize+unitSize-1) / unitSize; i++)
- 			stacks[i].store((int*)NULL);
+ 			stacks[i].store((ElementType*)NULL);
  		end.store(0);
  	}
 	~PushOnlyFastStack(){
@@ -54,7 +54,7 @@ class PushOnlyFastStack{
 	}
 	// get element, no delete
 	bool get(int token, ElementType& ret){
-		if(token > max_size)return -1;
+		if(token > max_size)return false;
 		int mainSlot = token / unitSize;
 		int subSlot = token - mainSlot * unitSize;
 		ElementType* oldStack;
@@ -67,8 +67,8 @@ class PushOnlyFastStack{
 		}
 	}
 	// return new token
-	int push(ElementType&& newItem){
-		int slot = std::atomic_fetch_add(&end, 1) ;
+	int push(ElementType newItem){
+		int slot = std::atomic_fetch_add(&end, 1) ; // start from 0
 		if(slot >= max_size)return -1;
 		int mainSlot = slot / unitSize;
 		int subSlot = slot - mainSlot * unitSize;
@@ -83,7 +83,7 @@ class PushOnlyFastStack{
 				delete [] newStack;
 			}
 		}
-		oldStack[subSlot] = std::move(newItem);
+		oldStack[subSlot] = (newItem);
 		return slot;
 	}
 
@@ -115,19 +115,19 @@ class FastStack{
  		ret = ring[slot];
  		return true;
  	}
- 	bool push(ElementType&& item){
+ 	bool push(ElementType item){
  		std::lock_guard<std::mutex> local(lock);
  		if(head == tail){
  			if(head == 0){
  				tail ++;
- 				ring[0] = std::move(item);
+ 				ring[0] = (item);
  				return true;
  			}
  			else{
  				return false;
  			}
  		}
- 		ring[tail] = std::move(item);
+ 		ring[tail] = (item);
  		tail = (tail==max_size-1) ? 0 : tail+1;
  		if(head == tail && tail == 0){
  			head = tail = 1; // no equal 0
@@ -160,14 +160,14 @@ class FastLocalQueue{
  public:
 	FastLocalQueue(): head_(0), tail_(0), enqueue_count_(0), dequeue_count_(0), enqueue_revoke_(0), dequeue_revoke_(0) { }
 	~FastLocalQueue() { }
-	bool push(ElementType&& item){
+	bool push(ElementType item){
 		// first check outer layer
 		int enq = std::atomic_fetch_add(&enqueue_count_, 1) + 1;
 		if(enq - enqueue_revoke_.load() - dequeue_count_.load() + dequeue_revoke_.load() > QueueSize){
 			std::atomic_fetch_add(&enqueue_revoke_, 1);
 			return false;
 		}
-		data_[std::atomic_fetch_add(&tail_, 1)] = std::move(item);
+		data_[std::atomic_fetch_add(&tail_, 1)] = (item);
 		return true;
 	}
 	bool pop(ElementType& ret){
@@ -206,6 +206,7 @@ class FastLocalQueue{
 // 3. Handle delegate
 constexpr size_t kLocalQueueSize = 20;
 constexpr size_t kFreeListSize = 50;
+constexpr size_t kQueueMaxCount = 100;
 // unordered unlimited queue without sync needed
 // maintain thread local order
 // provide basic interface of <<, >>, non-blocking
@@ -213,66 +214,117 @@ constexpr size_t kFreeListSize = 50;
 template <typename ElementType>
 class FastQueue{
 	using Token = int;
-	PushOnlyFastStack<std::shared_ptr<FastLocalQueue<ElementType, kLocalQueueSize>>> QueueList;
+ 	using LocalQueuePtr = std::shared_ptr<FastLocalQueue<ElementType, kLocalQueueSize>>;
+	PushOnlyFastStack<LocalQueuePtr> QueueList;
 	FastStack<Token> FreeList;
  public:
- 	FastQueue(): FreeList(kFreeListSize) { }
- 	// exclusive create new free
- 	bool create_local(Token& newToken){
+ 	FastQueue(): FreeList(kFreeListSize), QueueList(kQueueMaxCount) { }
+ 	bool create_queue(Token& newToken){
  		auto token = QueueList.push(std::make_shared<FastLocalQueue<ElementType, kLocalQueueSize>>());
  		if(token < 0)return false;
- 		bool ret = FreeList.push(token);
- 		if(!ret){
- 			return false; // should not happen if free list is empty
- 		}
  		newToken = token;
  		return true;
  	}
  	// for handle producer
 	// when delete a handle, queue freed only for new producer
 	// consumer still keep probing
- 	struct ProducerHandle{ 
+ 	struct ProducerHandle{
+ 		const int kProducerRetry = 10;
  		Token token;
  		FastQueue<ElementType>* queue_;
- 		std::weak_ptr<FastLocalQueue<ElementType, kLocalQueueSize>> local_;
-		ProducerHandle(FastQueue<ElementType>* queue): queue_(queue){
+ 		LocalQueuePtr local_; // no one is to delete queue, use shared
+		ProducerHandle(FastQueue<ElementType>* queue): queue_(queue), local_(nullptr){
 			// create a local queue here
-			while(!revoke()) { }
+			int retry = kProducerRetry;
+			while(--retry && !apply()) { }
+			if(retry == 0){
+				retry = kProducerRetry;
+				while(--retry && !preempt()) { }
+			}
 		}
-		bool revoke(void){
+		bool apply(void){
 			bool ret = queue_->FreeList.pop(token);
 			if(!ret)return false;
+			local_ = nullptr;
+			ret = queue_->QueueList.get(token, local_);
+			return ret;
+		}
+		bool preempt(void){
+			bool ret = queue_->create_queue(token);
+			if(!ret)return false;
+			local_ = nullptr;
 			ret = queue_->QueueList.get(token, local_);
 			return ret;
 		}
 		bool push(ElementType&& item){
-			if(!local_.lock()){
-				return false; // no retry
-			}
-			weak_ptr<FastLocalQueue<ElementType, kLocalQueueSize>> local
+			if(!local_) return false; // no retry
+			return local_->push(item);
 		}
 		bool push_hard(ElementType&& item){ // skip to new local queue
-			if(!local_.lock()){
-				int retry = 10;
-				while(retry-- && !revoke()) { } 
-				if(!local_.lock()){
-					// create new free local queue
-					bool ret = queue_->create_local(token);
-					if(!ret)return false;
+			int retry;
+			if(!local_){
+				retry = kProducerRetry;
+				while(--retry && !apply()) {  } 
+				if(retry == 0){
+					retry = kProducerRetry;
+					while(--retry && !preempt()) {  }
 				}
 			}
-			assert(local_.lock());
+			if(!local_)return false;
 			
+			retry = kProducerRetry;
+			while(--retry && !local_->push(item)) {  }
+			if(retry == 0){
+				
+				queue_->FreeList.push(token);
+				retry = kProducerRetry;
+				while(--retry && !preempt()) {  }
+				if(!local_)return false;
+			}
+			
+			retry = kProducerRetry;
+			while(--retry && !local_->push(item)) {  }
+			return retry != 0;
 		}
 		~ProducerHandle(){
 			// free or delete the local queue here
+			if(local_){
+				queue_->FreeList.push(token);
+			}
 		}
 	};
  	// pop fail if approximate empty
- 	bool try_pop(ElementType& ret){
-
+ 	bool pop(ElementType& ret){
+ 		// randomly choose a local
+ 		int index = corand.UInt(QueueList.size());
+ 		int cur = index;
+ 		LocalQueuePtr local = nullptr;
+ 		bool status;
+ 		for(int i = 0; i==0 || cur != index; i++, cur += 2*i+1){
+ 			cur = cur % QueueList.size();
+ 			status = QueueList.get(cur, local);
+ 			if(!status || !local)return false;
+ 			status = local->pop(ret);
+ 			if(status)return true;
+ 		}
+ 		return false;
  	}
-
+ 	// probing in sequential way
+ 	bool pop_hard(ElementType& ret){
+ 		LocalQueuePtr local = nullptr;
+ 		bool status;
+ 		int approximateSize = QueueList.size();
+ 		for(int index = 0; index < approximateSize; index ++){
+ 			status = QueueList.get(index, local);
+ 			if(!status || !local)return false;
+ 			status = local->pop(ret);
+ 			if(status)return true;
+ 			if(index == approximateSize - 1){
+ 				approximateSize = QueueList.size(); // update size at end
+ 			}
+ 		}
+ 		return false;
+ 	}
 };
 
 
