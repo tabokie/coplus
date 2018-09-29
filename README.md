@@ -12,7 +12,7 @@
 * [x] Message Channel
 * [x] Single Thread Pool
 * [x] Multi-Thread Pool with locked queue
-* [ ] Thread Pool with wait-free queue
+* [x] Thread Pool with wait-free queue
 * [ ] Thread Pool with coroutine
 * [ ] Concurrent tools
 
