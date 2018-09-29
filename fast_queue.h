@@ -93,6 +93,86 @@ class PushOnlyFastStack{
 
 };
 
+template <typename ElementType, size_t unitSize>
+class PushOnlyFastStack<std::unique_ptr<ElementType>, unitSize>{
+	using OwnerPtr = std::unique_ptr<ElementType>;
+	using RefPtr = ElementType*;
+	std::atomic<OwnerPtr*>* stacks;
+	std::atomic<int> end; // point to the first empty slot, meaning size
+	size_t max_size;
+ public:
+ 	PushOnlyFastStack(size_t maxSize): max_size(maxSize){
+ 		stacks = new std::atomic<OwnerPtr*>[(maxSize+unitSize-1) / unitSize]();
+ 		for(int i = 0; i < (maxSize+unitSize-1) / unitSize; i++)
+ 			stacks[i].store(nullptr);
+ 		end.store(0);
+ 	}
+	~PushOnlyFastStack(){
+		for(int i = 0; i < (max_size+unitSize-1) / unitSize; i++){
+			delete [] stacks[i].load();
+		}
+		delete [] stacks;
+	}
+	// get element, no delete
+	bool get(int token, RefPtr& ret){
+		if(token > max_size)return false;
+		int mainSlot = token / unitSize;
+		int subSlot = token - mainSlot * unitSize;
+		OwnerPtr* oldStack;
+		if((oldStack = stacks[mainSlot].load()) == nullptr){
+			return false;
+		}
+		else{
+			ret = oldStack[subSlot].get();
+			return true;
+		}
+	}
+	// return new token
+	int push(RefPtr newItem){
+		int slot = std::atomic_fetch_add(&end, 1) ; // start from 0
+		if(slot >= max_size)return -1;
+		int mainSlot = slot / unitSize;
+		int subSlot = slot - mainSlot * unitSize;
+		OwnerPtr* oldStack;
+		if((oldStack = stacks[mainSlot].load()) == nullptr){
+			OwnerPtr* newStack = new OwnerPtr[unitSize]();
+			if(std::atomic_compare_exchange_strong(&stacks[mainSlot], &oldStack, newStack)){
+				// first to new
+				oldStack = newStack;
+			}
+			else{
+				delete [] newStack;
+			}
+		}
+		oldStack[subSlot].reset(newItem);
+		return slot;
+	}
+	int push(OwnerPtr&& newItem){
+		int slot = std::atomic_fetch_add(&end, 1) ; // start from 0
+		if(slot >= max_size)return -1;
+		int mainSlot = slot / unitSize;
+		int subSlot = slot - mainSlot * unitSize;
+		OwnerPtr* oldStack;
+		if((oldStack = stacks[mainSlot].load()) == nullptr){
+			OwnerPtr* newStack = new OwnerPtr[unitSize]();
+			if(std::atomic_compare_exchange_strong(&stacks[mainSlot], &oldStack, newStack)){
+				// first to new
+				oldStack = newStack;
+			}
+			else{
+				delete [] newStack;
+			}
+		}
+		oldStack[subSlot] = (std::move(newItem));
+		return slot;
+	}
+
+	int size(void){
+		return end.load();
+	}
+
+};
+
 template <typename ElementType>
 class FastStack{
 	int max_size;
@@ -159,6 +239,8 @@ class FastLocalQueue{
 	ElementType data_[QueueSize];
  public:
 	FastLocalQueue(): head_(0), tail_(0), enqueue_count_(0), dequeue_count_(0), enqueue_revoke_(0), dequeue_revoke_(0) { }
+	FastLocalQueue(FastLocalQueue&& rhs): head_(0), tail_(0), enqueue_count_(0), dequeue_count_(0), enqueue_revoke_(0), dequeue_revoke_(0) { }
+	FastLocalQueue(const FastLocalQueue&) = delete;
 	~FastLocalQueue() { }
 	bool push(ElementType item){
 		// first check outer layer
@@ -167,7 +249,7 @@ class FastLocalQueue{
 			std::atomic_fetch_add(&enqueue_revoke_, 1);
 			return false;
 		}
-		data_[std::atomic_fetch_add(&tail_, 1)] = (item);
+		data_[std::atomic_fetch_add(&tail_, 1) % QueueSize] = (item);
 		return true;
 	}
 	bool pop(ElementType& ret){
@@ -177,7 +259,7 @@ class FastLocalQueue{
 			std::atomic_fetch_add(&dequeue_revoke_, 1);
 			return false;
 		}
-		ret = data_[std::atomic_fetch_add(&head_, 1)];
+		ret = data_[std::atomic_fetch_add(&head_, 1) % QueueSize];
 		return true;
 	}
 	size_t size(void){
@@ -198,12 +280,8 @@ class FastLocalQueue{
 		colog.put_batch(enqueue_count_.load(),
 			enqueue_revoke_.load(),dequeue_count_.load(),dequeue_revoke_.load(),head_.load(),tail_.load());
 	}
-
 };
 
-// 1. fixed local size
-// 2. shared_ptr overhead
-// 3. Handle delegate
 constexpr size_t kLocalQueueSize = 20;
 constexpr size_t kFreeListSize = 50;
 constexpr size_t kQueueMaxCount = 100;
@@ -214,25 +292,42 @@ constexpr size_t kQueueMaxCount = 100;
 template <typename ElementType>
 class FastQueue{
 	using Token = int;
- 	using LocalQueuePtr = std::shared_ptr<FastLocalQueue<ElementType, kLocalQueueSize>>;
-	PushOnlyFastStack<LocalQueuePtr> QueueList;
+	using LocalQueue = FastLocalQueue<ElementType, kLocalQueueSize>;
+ 	using LocalQueueOwnerPtr = std::unique_ptr<FastLocalQueue<ElementType, kLocalQueueSize>>;
+ 	using LocalQueueRefPtr = FastLocalQueue<ElementType, kLocalQueueSize>*;
+	PushOnlyFastStack<LocalQueueOwnerPtr> QueueList;
 	FastStack<Token> FreeList;
  public:
  	FastQueue(): FreeList(kFreeListSize), QueueList(kQueueMaxCount) { }
- 	bool create_queue(Token& newToken){
- 		auto token = QueueList.push(std::make_shared<FastLocalQueue<ElementType, kLocalQueueSize>>());
- 		if(token < 0)return false;
- 		newToken = token;
- 		return true;
+ 	~FastQueue() { } // causing all local queues' destruction, MUST ensure all handle ref are deleted
+ 	size_t queue_count(void){
+ 		return QueueList.size();
+ 	}
+ 	size_t element_count(void){
+ 		// sequential scan
+ 		LocalQueueRefPtr local = nullptr;
+ 		bool status;
+ 		int approximateSize = QueueList.size();
+ 		size_t totalCount = 0;
+ 		for(int index = 0; index < approximateSize; index ++){
+ 			status = QueueList.get(index, local);
+ 			if(!status || !local)continue;
+ 			totalCount += local->size();
+ 			if(index == approximateSize - 1){
+ 				approximateSize = QueueList.size(); // update size at end
+ 			}
+ 		}
+ 		return false;
  	}
  	// for handle producer
 	// when delete a handle, queue freed only for new producer
 	// consumer still keep probing
- 	struct ProducerHandle{
+ 	class ProducerHandle{
  		const int kProducerRetry = 10;
  		Token token;
  		FastQueue<ElementType>* queue_;
- 		LocalQueuePtr local_; // no one is to delete queue, use shared
+ 		LocalQueueRefPtr local_; // no one is to delete queue, use shared
+ 	 public:
 		ProducerHandle(FastQueue<ElementType>* queue): queue_(queue), local_(nullptr){
 			// create a local queue here
 			int retry = kProducerRetry;
@@ -242,25 +337,11 @@ class FastQueue{
 				while(--retry && !preempt()) { }
 			}
 		}
-		bool apply(void){
-			bool ret = queue_->FreeList.pop(token);
-			if(!ret)return false;
-			local_ = nullptr;
-			ret = queue_->QueueList.get(token, local_);
-			return ret;
-		}
-		bool preempt(void){
-			bool ret = queue_->create_queue(token);
-			if(!ret)return false;
-			local_ = nullptr;
-			ret = queue_->QueueList.get(token, local_);
-			return ret;
-		}
-		bool push(ElementType&& item){
+		bool push(ElementType item){
 			if(!local_) return false; // no retry
 			return local_->push(item);
 		}
-		bool push_hard(ElementType&& item){ // skip to new local queue
+		bool push_hard(ElementType item){ // skip to new local queue
 			int retry;
 			if(!local_){
 				retry = kProducerRetry;
@@ -292,18 +373,34 @@ class FastQueue{
 				queue_->FreeList.push(token);
 			}
 		}
+	 private:
+		bool apply(void){
+			bool ret = queue_->FreeList.pop(token);
+			if(!ret)return false;
+			local_ = nullptr;
+			ret = queue_->QueueList.get(token, local_);
+			return ret;
+		}
+		bool preempt(void){
+			bool ret = queue_->create_queue(token);
+			if(!ret)return false;
+			local_ = nullptr;
+			ret = queue_->QueueList.get(token, local_);
+			return ret;
+		}
+		
 	};
  	// pop fail if approximate empty
  	bool pop(ElementType& ret){
  		// randomly choose a local
  		int index = corand.UInt(QueueList.size());
  		int cur = index;
- 		LocalQueuePtr local = nullptr;
+ 		LocalQueueRefPtr local = nullptr;
  		bool status;
  		for(int i = 0; i==0 || cur != index; i++, cur += 2*i+1){
  			cur = cur % QueueList.size();
  			status = QueueList.get(cur, local);
- 			if(!status || !local)return false;
+ 			if(!status || !local)continue;
  			status = local->pop(ret);
  			if(status)return true;
  		}
@@ -311,7 +408,7 @@ class FastQueue{
  	}
  	// probing in sequential way
  	bool pop_hard(ElementType& ret){
- 		LocalQueuePtr local = nullptr;
+ 		LocalQueueRefPtr local = nullptr;
  		bool status;
  		int approximateSize = QueueList.size();
  		for(int index = 0; index < approximateSize; index ++){
@@ -320,10 +417,18 @@ class FastQueue{
  			status = local->pop(ret);
  			if(status)return true;
  			if(index == approximateSize - 1){
- 				approximateSize = QueueList.size(); // update size at end
+ 				// update size at end
+ 				approximateSize = QueueList.size();
  			}
  		}
  		return false;
+ 	}
+ private:
+ 	bool create_queue(Token& newToken){
+ 		auto token = QueueList.push(new LocalQueue());
+ 		if(token < 0)return false;
+ 		newToken = token;
+ 		return true;
  	}
 };
 

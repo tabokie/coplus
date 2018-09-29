@@ -7,41 +7,116 @@
 using namespace std;
 using namespace coplus;
 
-int TestPushOnlyFastStack(){
-	PushOnlyFastStack<int> stack(200);
-	int pushSize0 = corand.UInt(50);
-	int pushSize1 = corand.UInt(50);
-	int pushSize2 = corand.UInt(50);
-	auto t0 = ThreadPool::NewThread(
-		function<int(void)>([&]{
-			for(int i = 0; i < pushSize0; i++)
-				stack.push(9);
-			return 0;
-		})
-	);
-	auto t1 = ThreadPool::NewThread(
-		function<int(void)>([&]{
-			for(int i = 0; i < pushSize1; i++)
-				stack.push(9);
-			return 0;
-		})
-	);
+template <typename ElementType>
+struct TestPushOnlyFastStack{
+	int operator()(){
+		PushOnlyFastStack<ElementType> stack(200);
+		int pushSize0 = corand.UInt(50);
+		int pushSize1 = corand.UInt(50);
+		int pushSize2 = corand.UInt(50);
+		int pushSize = pushSize0 + pushSize1 + pushSize2;
+		auto t0 = ThreadPool::NewThread(
+			function<int(void)>([&]{
+				for(int i = 0; i < pushSize0; i++)
+					stack.push(ElementType());
+				return 0;
+			})
+		);
+		auto t1 = ThreadPool::NewThread(
+			function<int(void)>([&]{
+				for(int i = 0; i < pushSize1; i++)
+					stack.push(ElementType());
+				return 0;
+			})
+		);
 
-	auto t2 = ThreadPool::NewThread(
-		function<int(void)>([&]{
-			for(int i = 0; i < pushSize2; i++)
-				stack.push(9);
-			return 0;
-		})
-	);
+		auto t2 = ThreadPool::NewThread(
+			function<int(void)>([&]{
+				for(int i = 0; i < pushSize2; i++)
+					stack.push(ElementType());
+				return 0;
+			})
+		);
 
-	t0.join();
-	t1.join();
-	t2.join();
-	assert(stack.size() == pushSize0 + pushSize1 + pushSize2 || stack.size() == 200);
-	// EXPECT_EQ(stack.size(), pushSize1 + pushSize0);
-	return 0;
-}
+		auto t3 = ThreadPool::NewThread(
+			function<int(void)>([&]{
+				ElementType ret;
+				for(int i = 0; i < pushSize; i++){
+					bool status = stack.get(i, ret);
+					if(!status){
+						colog << "Ret false";
+					}
+				}
+				return 0;
+			})
+		);
+
+		t0.join();
+		t1.join();
+		t2.join();
+		t3.join();
+		assert(stack.size() == pushSize0 + pushSize1 + pushSize2 || stack.size() == 200);
+		// EXPECT_EQ(stack.size(), pushSize1 + pushSize0);
+		return 0;
+	}
+};
+
+template <typename ElementType>
+struct TestPushOnlyFastStack<std::unique_ptr<ElementType>>{
+	int operator()(){
+		PushOnlyFastStack<std::unique_ptr<ElementType>> stack(200);
+		int pushSize0 = corand.UInt(50);
+		int pushSize1 = corand.UInt(50);
+		int pushSize2 = corand.UInt(50);
+		int pushSize = pushSize0 + pushSize1 + pushSize2;
+		auto t0 = ThreadPool::NewThread(
+			function<int(void)>([&]{
+				for(int i = 0; i < pushSize0; i++)
+					stack.push(new ElementType());
+				return 0;
+			})
+		);
+		auto t1 = ThreadPool::NewThread(
+			function<int(void)>([&]{
+				for(int i = 0; i < pushSize1; i++)
+					stack.push(new ElementType());
+				return 0;
+			})
+		);
+
+		auto t2 = ThreadPool::NewThread(
+			function<int(void)>([&]{
+				for(int i = 0; i < pushSize2; i++)
+					stack.push(new ElementType());
+				return 0;
+			})
+		);
+
+		auto t3 = ThreadPool::NewThread(
+			function<int(void)>([&]{
+				ElementType* ret;
+				for(int i = 0; i < pushSize; i++){
+					bool status = stack.get(i, ret);
+					if(!status){
+						colog << "Ret false";
+					}
+					else if(!ret){
+						colog << "Get a nullptr";
+					}
+				}
+				return 0;
+			})
+		);
+
+		t0.join();
+		t1.join();
+		t2.join();
+		t3.join();
+		assert(stack.size() == pushSize0 + pushSize1 + pushSize2 || stack.size() == 200);
+		// EXPECT_EQ(stack.size(), pushSize1 + pushSize0);
+		return 0;
+	}
+};
 
 int TestFastStack(){
 	FastStack<int> stack(100);
@@ -147,8 +222,13 @@ int TestFastQueue(void){
 	auto t0 = ThreadPool::NewThread(
 		function<int(void)>([&]{
 			FastQueue<int>::ProducerHandle handle(&queue);
-			for(int i = 0; i < pushSize0; i++)
-				while(!handle.push_hard(9)){}
+			for(int i = 0; i < pushSize0; i++){
+				if(!handle.push(9)){
+					if(!handle.push_hard(9)){
+						colog << "Critical: push hard failed";
+					}
+				}
+			}
 			return 0;
 		})
 	);
@@ -156,8 +236,13 @@ int TestFastQueue(void){
 	auto t1 = ThreadPool::NewThread(
 		function<int(void)>([&]{
 			FastQueue<int>::ProducerHandle handle(&queue);
-			for(int i = 0; i < pushSize1; i++)
-				while(!handle.push_hard(9)){}
+			for(int i = 0; i < pushSize1; i++){
+				if(!handle.push(9)){
+					if(!handle.push_hard(9)){
+						colog << "Critical: push hard failed";
+					}
+				}
+			}
 			return 0;
 		})
 	);
@@ -166,7 +251,7 @@ int TestFastQueue(void){
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize1; i++)
-				while(!queue.pop_hard(ret)){};
+				while(!queue.pop_hard(ret)){ };
 			return 0;
 		})
 	);
@@ -174,15 +259,15 @@ int TestFastQueue(void){
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize2; i++)
-				while(!queue.pop_hard(ret)){};
+				while(!queue.pop_hard(ret)){ };
 			return 0;
 		})
 	);
 	auto t4 = ThreadPool::NewThread(
 		function<int(void)>([&]{
 			int ret;
-			for(int i = 0; i < popSize2; i++)
-				while(!queue.pop_hard(ret)){};
+			for(int i = 0; i < popSize0; i++)
+				while(!queue.pop_hard(ret)){ };
 			return 0;
 		})
 	);
@@ -192,13 +277,14 @@ int TestFastQueue(void){
 	t2.join();
 	t3.join();
 	t4.join();
-	// assert(queue.size() == pushSize - popSize2 - popSize1 - popSize0 );
+	assert(queue.element_count() == 0 );
 	return 0;
 }
 
 int main(void){
-	// return TestPushOnlyFastStack();
+	// auto ret = TestPushOnlyFastStack<std::unique_ptr<int>, int*>{}();
+	// auto ret = TestPushOnlyFastStack<int>{}();
 	auto ret = TestFastQueue();
 	cout << "Safely exit..." << endl;
-	return ret;
+	return 0;
 }
