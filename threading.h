@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "colog.h"
+#include "fast_queue.h"
 
 namespace coplus {
 
@@ -111,24 +112,22 @@ Thread::Cleaner(){
 
 
 class ThreadPool{
-	std::queue<std::shared_ptr<Task> > tasks;
+
+	FastQueue<std::shared_ptr<Task>> tasks;
+	// std::queue<std::shared_ptr<Task> > tasks;
+	// std::mutex lock;
 	std::vector<Machine> machines;
-	// std::vector<std::thread> machines;
-	std::mutex lock;
 	size_t threadSize;
 	std::mutex mutating;
  public:
  	ThreadPool(){
- 		threadSize = std::thread::hardware_concurrency();
- 		for(int i = 0; i < threadSize; i++){
+ 		threadSize = std::thread::hardware_concurrency(); // one for main thread
+ 		for(int i = 0; i < threadSize - 1; i++){
  			machines.push_back( //std::thread(
  				[&](){
- 					lock.lock();
-		 			if(tasks.size()){
-			 			tasks.front()->call();
-			 			tasks.pop();
-		 			}
-		 			lock.unlock();
+ 					std::shared_ptr<Task> current;
+ 					bool ret = tasks.pop_hard(current);
+ 					if(ret) current->call();
  				}
  			);
  		}
@@ -145,12 +144,10 @@ class ThreadPool{
  			for(int i = threadSize; i < newSize; i++){
  				machines.push_back(
 	 				[&](){
-	 					lock.lock();
-			 			if(tasks.size()){
-				 			tasks.front()->call();
-				 			tasks.pop();
-			 			}
-			 			lock.unlock();
+	 					std::shared_ptr<Task> current;
+	 					bool ret = tasks.pop_hard(current);
+	 					// unresolved bugs here
+	 					if(ret) current->call();
 	 				}
 	 			);
  			}
@@ -173,11 +170,16 @@ class ThreadPool{
 	typename FunctionType, 
 	typename test = typename std::enable_if<!bool(std::is_void<typename std::result_of<FunctionType()>::type>::value)>::type>
 	std::future<typename std::result_of<FunctionType()>::type> submit(FunctionType&& f){
+		// @BUG: thread_local outlive the FastQueue object
+		// thread_local FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
 		using ResultType = typename std::result_of<FunctionType()>::type;
 		std::packaged_task<ResultType()> packaged_f(std::move(f));
 		auto ret = packaged_f.get_future();
-		std::lock_guard<std::mutex> local(lock);
-		tasks.push(std::make_shared<FunctionTask<std::packaged_task<ResultType()>>>(std::move(packaged_f)));
+		bool status = handle.push_hard(std::make_shared<FunctionTask<std::packaged_task<ResultType()>>>(std::move(packaged_f)));
+		if(!status){
+			colog << "Push failed";
+		}
 		return ret;
 	}
 	// for void return function
@@ -185,8 +187,11 @@ class ThreadPool{
 	typename FunctionType, 
 	typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType()>::type>::value>::type >
 	void submit(FunctionType&& f){
-		std::lock_guard<std::mutex> local(lock);
-		tasks.push(std::make_shared<FunctionTask<FunctionType>>(std::move(f)));
+		thread_local FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+		bool status = handle.push_hard(std::make_shared<FunctionTask<FunctionType>>(std::move(f)));
+		if(!status){
+			colog << "Push failed";
+		}
 	}
 
 };

@@ -16,3 +16,6 @@
 * [ ] Thread Pool with coroutine
 * [ ] Concurrent tools
 
+## Benchmark:
+
+Under 4-core computer, execute enqueue operation with 3 working threads on FastQueue and NaiveQueue(std::queue with mutex), FastQueue outperforms NaiveQueue by 8 times.

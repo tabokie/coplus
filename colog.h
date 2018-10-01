@@ -9,6 +9,8 @@
 #include <atomic>
 #include <cstdio>
 
+#include "util.h"
+
 namespace coplus {
 
 namespace {
@@ -29,7 +31,7 @@ class ThreadInfo{
 	}
 };
 
-class Colog{
+class Colog: public NoMove{
 	std::mutex lk;
  public:
  	Colog(){
@@ -54,16 +56,18 @@ class Colog{
 
 }
 
-// struct Colog {
-// 	FatalLog Fatal;
-// 	InfoLog Info;
-// 	int LogLevel;
-// 	Colog(int level = 0): LogLevel(level){ }
-// 	~Colog() { }
-// };
-
 Colog colog;
 
+namespace {
+class Coreport: public NoMove{
+ public:
+ 	Coreport() = default;
+	bool Register(std::string key) {return true;}
+	bool Add(std::string key, int count) {return true;}
+};
+} // np anonymous
 
-}
+Coreport coreport;
+
+} // namespace coplus
 

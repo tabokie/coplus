@@ -7,7 +7,7 @@
 #include <vector> // vector
 #include <future> // std::future
 #include <type_traits> // std::enable_if , result_of, is_void
-#include <iostream>
+#include <iostream>    
 #include <queue> // std::queue
 #include <cassert> // assert
 #include <algorithm> // std::min
@@ -244,8 +244,9 @@ class FastLocalQueue{
 	~FastLocalQueue() { }
 	bool push(ElementType item){
 		// first check outer layer
+		int enq_revoke = enqueue_revoke_.load();
 		int enq = std::atomic_fetch_add(&enqueue_count_, 1) + 1;
-		if(enq - enqueue_revoke_.load() - dequeue_count_.load() + dequeue_revoke_.load() > QueueSize){
+		if(enq - enq_revoke - dequeue_count_.load() + dequeue_revoke_.load() > QueueSize){
 			std::atomic_fetch_add(&enqueue_revoke_, 1);
 			return false;
 		}
@@ -254,8 +255,10 @@ class FastLocalQueue{
 	}
 	bool pop(ElementType& ret){
 		// first check outer layer
+		int deq_revoke = dequeue_revoke_.load(); // safe for its increasing nature
 		int deq = std::atomic_fetch_add(&dequeue_count_, 1) + 1;
-		if(enqueue_count_.load() - enqueue_revoke_.load() - deq + dequeue_revoke_.load() < 0){
+		// if(enqueue_count_.load() - enqueue_revoke_.load() - deq + dequeue_revoke_.load() < 0){
+		if(enqueue_count_.load() - enqueue_revoke_.load() - deq + deq_revoke < 0){
 			std::atomic_fetch_add(&dequeue_revoke_, 1);
 			return false;
 		}
@@ -362,6 +365,9 @@ class FastQueue{
 				while(--retry && !preempt()) {  }
 				if(!local_)return false;
 			}
+			else{ // @BUG
+				return true;
+			}
 			
 			retry = kProducerRetry;
 			while(--retry && !local_->push(item)) {  }
@@ -411,9 +417,16 @@ class FastQueue{
  		LocalQueueRefPtr local = nullptr;
  		bool status;
  		int approximateSize = QueueList.size();
- 		for(int index = 0; index < approximateSize; index ++){
+ 		int middle = corand.UInt(approximateSize);
+ 		for(int index = middle; index >= 0; index --){ // up to low
  			status = QueueList.get(index, local);
- 			if(!status || !local)return false;
+ 			if(!status || !local)continue; // don't break yet
+ 			status = local->pop(ret);
+ 			if(status)return true;
+ 		}
+ 		for(int index = middle + 1; index < approximateSize; index ++){ // lo to up
+ 			status = QueueList.get(index, local);
+ 			if(!status || !local)return false; // break
  			status = local->pop(ret);
  			if(status)return true;
  			if(index == approximateSize - 1){
@@ -432,113 +445,6 @@ class FastQueue{
  	}
 };
 
-
-// Old implementation with mutex like atomic flag
-/*
-// like kfifo, a lock-free queue for single consumer & producer
-// implemented using atomic update of head/tail
-// block hardly happened for single consumer/producer context
-// may happened for bounded queue and exausted linker
-template <typename ElementType>
-class SingleStreamQueue {
-	std::atomic<bool> in_signal_;
-	std::atomic<bool> out_signal_;
-	ElementType* data_;
-	uint32_t radix_;
-	bool recap_;
-	uint32_t in_; // in_ is free to push
-	uint32_t out_; // out_ is free to pop if in>out
- public:
- 	SingleStreamQueue(uint32_t initial = 6, bool bounded = false)
- 		: radix_(initial), recap_(!bounded){ // for bounded, possible to block
- 		data_ = new ElementType[2 << radix_];
- 		std::atomic_init(&in_signal_, false);
- 		std::atomic_init(&out_signal_, false);
- 	}
- 	inline bool set_in(void) {
- 		bool seted = false;
- 		std::atomic_compare_exchange_strong(&in_signal_, &seted, true);
- 		return !seted; // if occupied, seted will be set to true
- 	}
- 	inline void reset_in(void) {
- 		std::atomic_store(&in_signal_, false); // set anyway
- 		return ;
- 	}
- 	inline bool set_out(void) {
- 		bool seted = false;
- 		std::atomic_compare_exchange_strong(&out_signal_, &seted, true);
- 		return !seted;
- 	}
- 	inline void reset_out(void) {
- 		std::atomic_store(&out_signal_, false);
- 		return ;
- 	}
- 	// full -> recap / empty -> 
- 	inline void push(ElementType item) {
-
- 	}
- 	inline void pop(ElementType& item){
-
- 	}
- 	// push
- 	SingleStreamQueue& operator<<(ElementType item) { // blocking input
- 		while(!set_in()) { }
- 		while(in_ == out_ && recap_){
- 			recap(radix_+1, true);
- 		}
- 		uint32_t in = in_ & (0xffffffff << radix_);
-
- 		reset_in();
- 		return *this;
- 	}
- 	bool try_push(ElementType item) {
- 		if(set_in()){
- 			item;
- 			reset_in();
- 			return true;
- 		}
- 		return false;
- 	}
- 	// pop
- 	SingleStreamQueue& operator>>(ElementType& item) {
- 		while(!set_out()) { }
- 		if()
- 		reset_out();
- 		return *this;
- 	}
- 	bool try_pop(ElementType& item) {
- 		if(set_out()){
- 			item = 
- 			reset_out();
- 			return true;
- 		}
- 		return false;
- 	}
- 	// recap
- 	bool recap(size_t cap, bool in_set = false, bool out_set = false) {
- 		if(!in_set){
- 			while(!set_in()){ }
- 		}
- 		if(!out_set){
- 			while(!set_out()){ }
- 		}
-
- 		ElementType* newData = new ElementType[2 << cap];
- 		memcpy(newData, data_+out_, std::min(in_-out_, (2<<radix_)-out_) * sizeof(ElementType));
- 		if()
- 		memcpy(newData)
- 		if(!in_set){
- 			reset_in();
- 		}
- 		if(!out_set){
- 			reset_out();
- 		}
- 	}
-
-};
-*/	
-
 } // namespace coplus
-
 
 #endif // COPLUS_FAST_QUEUE_H_

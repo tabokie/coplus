@@ -24,5 +24,6 @@ int main(void){
 	colog << a;
 	pool.close();
 	assert(retVal == a);
+	colog << "Safely exit...";
 	return 0;
 }

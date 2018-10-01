@@ -1,4 +1,4 @@
-// #pragma once
+#pragma once
 
 #include <random>
 #include <string>
@@ -7,11 +7,11 @@ namespace coplus{
 
 namespace { // isolated implementation
 
-class Random{
+class Corand{
 	std::mt19937 gen_;
-	std::uniform_real_distribution<double> double_dist_;
+	std::uniform_real_distribution<double> double_dist_; // [0,1)
  public:
- 	Random(){Shuffle();}
+ 	Corand(){Shuffle();}
 	void Shuffle(void){
 		gen_.seed(std::random_device()());
 	}
@@ -45,7 +45,7 @@ class Random{
 
 }
 
-Random corand;
+Corand corand;
 
 }
 
