@@ -15,14 +15,14 @@ struct TestPushOnlyFastStack{
 		int pushSize1 = corand.UInt(50);
 		int pushSize2 = corand.UInt(50);
 		int pushSize = pushSize0 + pushSize1 + pushSize2;
-		auto t0 = ThreadPool::NewThread(
+		auto t0 = std::thread(
 			function<int(void)>([&]{
 				for(int i = 0; i < pushSize0; i++)
 					stack.push(ElementType());
 				return 0;
 			})
 		);
-		auto t1 = ThreadPool::NewThread(
+		auto t1 = std::thread(
 			function<int(void)>([&]{
 				for(int i = 0; i < pushSize1; i++)
 					stack.push(ElementType());
@@ -30,7 +30,7 @@ struct TestPushOnlyFastStack{
 			})
 		);
 
-		auto t2 = ThreadPool::NewThread(
+		auto t2 = std::thread(
 			function<int(void)>([&]{
 				for(int i = 0; i < pushSize2; i++)
 					stack.push(ElementType());
@@ -38,7 +38,7 @@ struct TestPushOnlyFastStack{
 			})
 		);
 
-		auto t3 = ThreadPool::NewThread(
+		auto t3 = std::thread(
 			function<int(void)>([&]{
 				ElementType ret;
 				for(int i = 0; i < pushSize; i++){
@@ -69,14 +69,14 @@ struct TestPushOnlyFastStack<std::unique_ptr<ElementType>>{
 		int pushSize1 = corand.UInt(50);
 		int pushSize2 = corand.UInt(50);
 		int pushSize = pushSize0 + pushSize1 + pushSize2;
-		auto t0 = ThreadPool::NewThread(
+		auto t0 = std::thread(
 			function<int(void)>([&]{
 				for(int i = 0; i < pushSize0; i++)
 					stack.push(new ElementType());
 				return 0;
 			})
 		);
-		auto t1 = ThreadPool::NewThread(
+		auto t1 = std::thread(
 			function<int(void)>([&]{
 				for(int i = 0; i < pushSize1; i++)
 					stack.push(new ElementType());
@@ -84,7 +84,7 @@ struct TestPushOnlyFastStack<std::unique_ptr<ElementType>>{
 			})
 		);
 
-		auto t2 = ThreadPool::NewThread(
+		auto t2 = std::thread(
 			function<int(void)>([&]{
 				for(int i = 0; i < pushSize2; i++)
 					stack.push(new ElementType());
@@ -92,7 +92,7 @@ struct TestPushOnlyFastStack<std::unique_ptr<ElementType>>{
 			})
 		);
 
-		auto t3 = ThreadPool::NewThread(
+		auto t3 = std::thread(
 			function<int(void)>([&]{
 				ElementType* ret;
 				for(int i = 0; i < pushSize; i++){
@@ -124,21 +124,21 @@ int TestFastStack(){
 	int pushSize1 = corand.UInt(50);
 	int popSize0 = corand.UInt(pushSize0);
 	int popSize1 = corand.UInt(pushSize1);
-	auto t0 = ThreadPool::NewThread(
+	auto t0 = std::thread(
 		function<int(void)>([&]{
 			for(int i = 0; i < pushSize0; i++)
 				while(!stack.push(9)){	}
 			return 0;
 		})
 	);
-	auto t1 = ThreadPool::NewThread(
+	auto t1 = std::thread(
 		function<int(void)>([&]{
 			for(int i = 0; i < pushSize1; i++)
 				while(!stack.push(9)){	}
 			return 0;
 		})
 	);
-	auto t2 = ThreadPool::NewThread(
+	auto t2 = std::thread(
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize0; i++)
@@ -146,7 +146,7 @@ int TestFastStack(){
 			return 0;
 		})
 	);
-	auto t3 = ThreadPool::NewThread(
+	auto t3 = std::thread(
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize1; i++)
@@ -170,14 +170,14 @@ int TestLocalQueue(){
 	int popSize1 = corand.UInt(pushSize - popSize0);
 	// int popSize2 = corand.UInt(pushSize - popSize0 - popSize1);
 	int popSize2 = (pushSize - popSize0 - popSize1);
-	auto t0 = ThreadPool::NewThread(
+	auto t0 = std::thread(
 		function<int(void)>([&]{
 			for(int i = 0; i < pushSize; i++)
 				while(!queue.push(9)){}
 			return 0;
 		})
 	);
-	auto t1 = ThreadPool::NewThread(
+	auto t1 = std::thread(
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize0; i++)
@@ -185,7 +185,7 @@ int TestLocalQueue(){
 			return 0;
 		})
 	);
-	auto t2 = ThreadPool::NewThread(
+	auto t2 = std::thread(
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize1; i++)
@@ -193,7 +193,7 @@ int TestLocalQueue(){
 			return 0;
 		})
 	);
-	auto t3 = ThreadPool::NewThread(
+	auto t3 = std::thread(
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize2; i++)
@@ -219,7 +219,7 @@ int TestFastQueue(void){
 	int popSize1 = corand.UInt(pushSize - popSize0);
 	int popSize2 = (pushSize - popSize0 - popSize1);
 	// hard pusher
-	auto t0 = ThreadPool::NewThread(
+	auto t0 = std::thread(
 		function<int(void)>([&]{
 			FastQueue<int>::ProducerHandle handle(&queue);
 			for(int i = 0; i < pushSize0; i++){
@@ -233,7 +233,7 @@ int TestFastQueue(void){
 		})
 	);
 	// weak pusher
-	auto t1 = ThreadPool::NewThread(
+	auto t1 = std::thread(
 		function<int(void)>([&]{
 			FastQueue<int>::ProducerHandle handle(&queue);
 			for(int i = 0; i < pushSize1; i++){
@@ -247,7 +247,7 @@ int TestFastQueue(void){
 		})
 	);
 	// hard popper
-	auto t2 = ThreadPool::NewThread(
+	auto t2 = std::thread(
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize1; i++)
@@ -255,7 +255,7 @@ int TestFastQueue(void){
 			return 0;
 		})
 	);
-	auto t3 = ThreadPool::NewThread(
+	auto t3 = std::thread(
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize2; i++)
@@ -263,7 +263,7 @@ int TestFastQueue(void){
 			return 0;
 		})
 	);
-	auto t4 = ThreadPool::NewThread(
+	auto t4 = std::thread(
 		function<int(void)>([&]{
 			int ret;
 			for(int i = 0; i < popSize0; i++)

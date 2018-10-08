@@ -1,5 +1,3 @@
-// #include <gtest/gtest.h>
-
 #include "threading.h"
 #include "corand.h"
 #include "colog.h"
@@ -7,7 +5,6 @@
 #include <cassert>
 
 using namespace coplus;
-
 
 
 int main(void){

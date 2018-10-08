@@ -114,11 +114,9 @@ Thread::Cleaner(){
 class ThreadPool{
 
 	FastQueue<std::shared_ptr<Task>> tasks;
-	// std::queue<std::shared_ptr<Task> > tasks;
-	// std::mutex lock;
 	std::vector<Machine> machines;
 	size_t threadSize;
-	std::mutex mutating;
+	std::mutex mutating; // for structure mutating, lock all
  public:
  	ThreadPool(){
  		threadSize = std::thread::hardware_concurrency(); // one for main thread
@@ -158,20 +156,12 @@ class ThreadPool{
  	void close(void){
 		std::for_each(machines.begin(), machines.end(), std::mem_fn(&Machine::join));
  	}
- 	// quick new
-	template <typename T>
-	static std::thread NewThread(std::function<T>&& func){
-		std::thread temp(std::move(func));
-		return std::move(temp);
-	}
-
 	// for function with return value
 	template<
 	typename FunctionType, 
 	typename test = typename std::enable_if<!bool(std::is_void<typename std::result_of<FunctionType()>::type>::value)>::type>
 	std::future<typename std::result_of<FunctionType()>::type> submit(FunctionType&& f){
-		// @BUG: thread_local outlive the FastQueue object
-		// thread_local FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+		// @BUG: thread_local outlive the FastQueue object, use temporary handle instead
 		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
 		using ResultType = typename std::result_of<FunctionType()>::type;
 		std::packaged_task<ResultType()> packaged_f(std::move(f));
@@ -187,7 +177,7 @@ class ThreadPool{
 	typename FunctionType, 
 	typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType()>::type>::value>::type >
 	void submit(FunctionType&& f){
-		thread_local FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
 		bool status = handle.push_hard(std::make_shared<FunctionTask<FunctionType>>(std::move(f)));
 		if(!status){
 			colog << "Push failed";

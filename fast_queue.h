@@ -13,29 +13,22 @@
 #include <algorithm> // std::min
 #include <cstdint>
 
+#include "util.h"
 #include "corand.h"
 
 namespace coplus{
 // Design Overview //
 // Top: [Queue list & Free list]
 // Queue List (In Stack, wait-free)
-// - GetQueue(token)
-// - AddQueue
-// - Compact(GC) // deprecated for use of handle
 // Free List (In-Out Stack, non-busy structure use lock)
-// - GetFree
-// - AddFree
 // Bottom: [Single-Producer Multi-Comsumer Queue]
-// - try_push
-// - try_push_hard
-// - try_pop
 // Procedure //
 // Produce: Ask Handle -> Ask Free Queue -> Fetch or Create
 // -> Produce -> Full and Handle Transfer(need send in handle) -> Ask Free Queue and Free before
 // Consume: Ask Port -> Random and Probe (hard probe serially, weak probe 2-order)
 
 template <typename ElementType, size_t unitSize = 10>
-class PushOnlyFastStack{
+class PushOnlyFastStack: public NoMove{
 	std::atomic<ElementType*>* stacks;
 	std::atomic<int> end; // point to the first empty slot, meaning size
 	size_t max_size;
@@ -174,7 +167,7 @@ class PushOnlyFastStack<std::unique_ptr<ElementType>, unitSize>{
 };
 
 template <typename ElementType>
-class FastStack{
+class FastStack: public NoMove{
 	int max_size;
 	std::vector<ElementType> ring;
 	int head, tail; // head pop if < tail, tail push
@@ -182,6 +175,7 @@ class FastStack{
  public:
  	// only head=tail=0 is empty, other is full
  	FastStack(int maxSize): max_size(maxSize), head(0), tail(0), ring(maxSize) {	}
+ 	~FastStack() { }
  	bool pop(ElementType& ret){ // get and delete
  		std::lock_guard<std::mutex> local(lock);
  		if(head == tail && tail == 0){
@@ -225,13 +219,13 @@ class FastStack{
 
 // Push: atomic add push count, if push-pop < QueueSize, pass; else add push rependent count
 // Pop: atomic add pop count, if push-pop > 0, pass; else 
-template <typename ElementType, size_t QueueSize = 20>
-class FastLocalQueue{
+template <typename ElementType, size_t QueueSize = 32>
+class FastLocalQueue: public NoMove{
 	// outer layer
-	std::atomic<int> enqueue_count_;
-	std::atomic<int> enqueue_revoke_;
-	std::atomic<int> dequeue_count_;
-	std::atomic<int> dequeue_revoke_;
+	std::atomic<uint32_t> enqueue_count_;
+	std::atomic<uint32_t> enqueue_revoke_;
+	std::atomic<uint32_t> dequeue_count_;
+	std::atomic<uint32_t> dequeue_revoke_;
 	// inner layer
 	std::atomic<uint32_t> head_;
 	std::atomic<uint32_t> tail_;
@@ -239,30 +233,40 @@ class FastLocalQueue{
 	ElementType data_[QueueSize];
  public:
 	FastLocalQueue(): head_(0), tail_(0), enqueue_count_(0), dequeue_count_(0), enqueue_revoke_(0), dequeue_revoke_(0) { }
-	FastLocalQueue(FastLocalQueue&& rhs): head_(0), tail_(0), enqueue_count_(0), dequeue_count_(0), enqueue_revoke_(0), dequeue_revoke_(0) { }
-	FastLocalQueue(const FastLocalQueue&) = delete;
 	~FastLocalQueue() { }
+	// race condition:
+	// thread A: enq ++; --> switch
+	// thread B: calc enq - enq_r - deq + deq_r == 0;
 	bool push(ElementType item){
 		// first check outer layer
-		int enq_revoke = enqueue_revoke_.load();
-		int enq = std::atomic_fetch_add(&enqueue_count_, 1) + 1;
-		if(enq - enq_revoke - dequeue_count_.load() + dequeue_revoke_.load() > QueueSize){
+		uint32_t enq_revoke = enqueue_revoke_.load();
+		uint32_t enq = std::atomic_fetch_add(&enqueue_count_, 1) + 1;
+		if(enq - enq_revoke - tail_.load() > QueueSize){
 			std::atomic_fetch_add(&enqueue_revoke_, 1);
 			return false;
 		}
-		data_[std::atomic_fetch_add(&tail_, 1) % QueueSize] = (item);
+		uint32_t index = tail_.load();
+		data_[index % QueueSize] = (item);
+		std::atomic_fetch_add(&tail_, 1);
+		// data_[std::atomic_fetch_add(&tail_, 1) % QueueSize] = (item);
 		return true;
 	}
 	bool pop(ElementType& ret){
 		// first check outer layer
-		int deq_revoke = dequeue_revoke_.load(); // safe for its increasing nature
-		int deq = std::atomic_fetch_add(&dequeue_count_, 1) + 1;
-		// if(enqueue_count_.load() - enqueue_revoke_.load() - deq + dequeue_revoke_.load() < 0){
-		if(enqueue_count_.load() - enqueue_revoke_.load() - deq + deq_revoke < 0){
+		uint32_t deq_revoke = dequeue_revoke_.load(); // safe for its increasing nature
+		uint32_t deq = std::atomic_fetch_add(&dequeue_count_, 1) + 1;
+		if(head_.load() == deq - deq_revoke){
+		// if(enqueue_count_.load() - enqueue_revoke_.load() - deq + deq_revoke < 0){
 			std::atomic_fetch_add(&dequeue_revoke_, 1);
 			return false;
 		}
-		ret = data_[std::atomic_fetch_add(&head_, 1) % QueueSize];
+		int index = std::atomic_fetch_add(&head_, 1) % QueueSize;
+		ret = data_[index];
+		if(!ret){
+			colog.put_batch(deq, deq_revoke, dequeue_count_.load(), dequeue_revoke_.load());
+			colog << index;
+		}
+		// ret = data_[std::atomic_fetch_add(&head_, 1) % QueueSize];
 		return true;
 	}
 	size_t size(void){
@@ -285,7 +289,7 @@ class FastLocalQueue{
 	}
 };
 
-constexpr size_t kLocalQueueSize = 20;
+constexpr size_t kLocalQueueSize = 32;
 constexpr size_t kFreeListSize = 50;
 constexpr size_t kQueueMaxCount = 100;
 // unordered unlimited queue without sync needed
@@ -293,7 +297,7 @@ constexpr size_t kQueueMaxCount = 100;
 // provide basic interface of <<, >>, non-blocking
 // implementation using thread_local buffer
 template <typename ElementType>
-class FastQueue{
+class FastQueue: public NoMove{
 	using Token = int;
 	using LocalQueue = FastLocalQueue<ElementType, kLocalQueueSize>;
  	using LocalQueueOwnerPtr = std::unique_ptr<FastLocalQueue<ElementType, kLocalQueueSize>>;
@@ -359,7 +363,6 @@ class FastQueue{
 			retry = kProducerRetry;
 			while(--retry && !local_->push(item)) {  }
 			if(retry == 0){
-				
 				queue_->FreeList.push(token);
 				retry = kProducerRetry;
 				while(--retry && !preempt()) {  }
@@ -426,7 +429,9 @@ class FastQueue{
  		}
  		for(int index = middle + 1; index < approximateSize; index ++){ // lo to up
  			status = QueueList.get(index, local);
- 			if(!status || !local)return false; // break
+ 			if(!status || !local){
+ 				return false; // break
+ 			}
  			status = local->pop(ret);
  			if(status)return true;
  			if(index == approximateSize - 1){

@@ -14,7 +14,7 @@
 * [x] Multi-Thread Pool with locked queue
 * [x] Thread Pool with wait-free queue
 * [ ] Thread Pool with coroutine
-* [ ] Concurrent tools
+* [ ] Concurrent tools: multi-player channel
 
 ## Benchmark:
 
