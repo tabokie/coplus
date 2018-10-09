@@ -221,52 +221,58 @@ class FastStack: public NoMove{
 // Pop: atomic add pop count, if push-pop > 0, pass; else 
 template <typename ElementType, size_t QueueSize = 32>
 class FastLocalQueue: public NoMove{
+	// all monotonically increasing
 	// outer layer
 	std::atomic<uint32_t> enqueue_count_;
 	std::atomic<uint32_t> enqueue_revoke_;
 	std::atomic<uint32_t> dequeue_count_;
 	std::atomic<uint32_t> dequeue_revoke_;
 	// inner layer
-	std::atomic<uint32_t> head_;
-	std::atomic<uint32_t> tail_;
-	// data layer
+	std::atomic<uint32_t> head_; // dequeue from head
+	std::atomic<uint32_t> tail_; // enqueue to tail
+	// for accessing slot
+	std::atomic<uint32_t> head_fast_;
+	std::atomic<uint32_t> tail_fast_;
+ 	// data layer
 	ElementType data_[QueueSize];
  public:
-	FastLocalQueue(): head_(0), tail_(0), enqueue_count_(0), dequeue_count_(0), enqueue_revoke_(0), dequeue_revoke_(0) { }
+	FastLocalQueue(): 
+		head_(0), tail_(0), 
+		head_fast_(0), tail_fast_(0),
+		enqueue_count_(0), dequeue_count_(0), 
+		enqueue_revoke_(0), dequeue_revoke_(0) { }
 	~FastLocalQueue() { }
-	// race condition:
-	// thread A: enq ++; --> switch
-	// thread B: calc enq - enq_r - deq + deq_r == 0;
+	// race condition if using enq_c, deq_c to deduce state
+	// thread A: enq ++; --> switch context
+	// thread B: --> calc enq - enq_r - deq + deq_r == 0;
 	bool push(ElementType item){
 		// first check outer layer
 		uint32_t enq_revoke = enqueue_revoke_.load();
 		uint32_t enq = std::atomic_fetch_add(&enqueue_count_, 1) + 1;
-		if(enq - enq_revoke - tail_.load() > QueueSize){
+		// probable bug here, assuming that QueueSize << uint32_t.max
+		if( (enq - enq_revoke) - head_.load() > QueueSize){
 			std::atomic_fetch_add(&enqueue_revoke_, 1);
 			return false;
 		}
-		uint32_t index = tail_.load();
-		data_[index % QueueSize] = (item);
+		data_[std::atomic_fetch_add(&tail_fast_, 1) % QueueSize] = (item);
 		std::atomic_fetch_add(&tail_, 1);
-		// data_[std::atomic_fetch_add(&tail_, 1) % QueueSize] = (item);
 		return true;
 	}
 	bool pop(ElementType& ret){
 		// first check outer layer
 		uint32_t deq_revoke = dequeue_revoke_.load(); // safe for its increasing nature
 		uint32_t deq = std::atomic_fetch_add(&dequeue_count_, 1) + 1;
-		if(head_.load() == deq - deq_revoke){
-		// if(enqueue_count_.load() - enqueue_revoke_.load() - deq + deq_revoke < 0){
+		// if exactly empty, evaluate to uint32_t.max
+		// if exactly full, evaluate to QueueSize - 1
+		if(tail_.load() - (deq - deq_revoke) >= QueueSize ){
 			std::atomic_fetch_add(&dequeue_revoke_, 1);
 			return false;
 		}
-		int index = std::atomic_fetch_add(&head_, 1) % QueueSize;
-		ret = data_[index];
+		ret = data_[std::atomic_fetch_add(&head_fast_, 1) % QueueSize];
+		std::atomic_fetch_add(&head_, 1);
 		if(!ret){
-			colog.put_batch(deq, deq_revoke, dequeue_count_.load(), dequeue_revoke_.load());
-			colog << index;
+			log();
 		}
-		// ret = data_[std::atomic_fetch_add(&head_, 1) % QueueSize];
 		return true;
 	}
 	size_t size(void){
