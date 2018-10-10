@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <future>
 #include <algorithm>
+#include <typeinfo>
 
 #include "colog.h"
 #include "fast_queue.h"
@@ -42,7 +43,7 @@ struct FiberTask: public Task{
 
 class Machine{ // simple encap of thread
 	std::thread t_;
-	std::atomic<bool>* close_; // using pointer for CopyAssign used in container
+	std::atomic<bool>* close_; // using pointer for MoveAssign used in container
 	// asserting access to close happen in valid range
 	// asserting thread.empty == close_
  public:
@@ -144,7 +145,6 @@ class ThreadPool{
 	 				[&](){
 	 					std::shared_ptr<Task> current;
 	 					bool ret = tasks.pop_hard(current);
-	 					// unresolved bugs here
 	 					if(ret) current->call();
 	 				}
 	 			);
@@ -165,12 +165,12 @@ class ThreadPool{
 		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
 		using ResultType = typename std::result_of<FunctionType()>::type;
 		std::packaged_task<ResultType()> packaged_f(std::move(f));
-		auto ret = packaged_f.get_future();
+		auto ret = (packaged_f.get_future());
 		bool status = handle.push_hard(std::make_shared<FunctionTask<std::packaged_task<ResultType()>>>(std::move(packaged_f)));
 		if(!status){
 			colog << "Push failed";
 		}
-		return ret;
+		return (ret);
 	}
 	// for void return function
 	template<
