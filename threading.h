@@ -51,7 +51,7 @@ class Machine: public NoCopy{ // simple encap of thread
  public:
 	template <typename FunctionType>
 	Machine(FunctionType&& scheduler): close_(new std::atomic<bool>(false)), job_count_(new int(0)){
-		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler), count = job_count_]() mutable{
+		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler), count=job_count_]() mutable{
 	 		while( !close->load() ){
 				if (schedule()){
 					(*count) ++;
@@ -72,9 +72,11 @@ class Machine: public NoCopy{ // simple encap of thread
  	template <typename FunctionType>
  	bool restart(FunctionType&& scheduler){
  		if(!close_->load())return false;
- 		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler)](){
+ 		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler), count=job_count_]() mutable{
 	 		while( !close->load() ){
-				schedule();
+				if (schedule()){
+					(*count) ++;
+				}
 	 		}
 		}));
 		return true;
