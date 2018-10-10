@@ -249,7 +249,7 @@ class FastLocalQueue: public NoMove{
 		// first check outer layer
 		uint32_t enq_revoke = enqueue_revoke_.load();
 		uint32_t enq = std::atomic_fetch_add(&enqueue_count_, 1) + 1;
-		// probable bug here, assuming that QueueSize << uint32_t.max
+		// probable bug here, assuming that QueueSize + hazard << uint32_t.max
 		if( (enq - enq_revoke) - head_.load() > QueueSize){
 			std::atomic_fetch_add(&enqueue_revoke_, 1);
 			return false;
@@ -264,32 +264,30 @@ class FastLocalQueue: public NoMove{
 		uint32_t deq = std::atomic_fetch_add(&dequeue_count_, 1) + 1;
 		// if exactly empty, evaluate to uint32_t.max
 		// if exactly full, evaluate to QueueSize - 1
-		if(tail_.load() - (deq - deq_revoke) >= QueueSize ){
+		// here we assump the hazard is limited in half the max
+		if(tail_.load() - (deq - deq_revoke) > 2147483647){
 			std::atomic_fetch_add(&dequeue_revoke_, 1);
 			return false;
 		}
 		ret = data_[std::atomic_fetch_add(&head_fast_, 1) % QueueSize];
 		std::atomic_fetch_add(&head_, 1);
-		if(!ret){
-			log();
-		}
 		return true;
 	}
-	size_t size(void){
-		int current = tail_.load() - head_.load();
-		if(current == 0){
-			// rough assumption of concurrency
-			if( (enqueue_count_.load() - enqueue_revoke_.load() - dequeue_count_.load() + dequeue_revoke_.load()) > QueueSize / 2){
-				current = tail_.load() - head_.load();
-				return (current == 0) ? QueueSize : current;
-			}
-			else{
-				return tail_.load() - head_.load();
-			}
-		}
-		return current;
+	inline size_t size(void){
+		return (tail_.load() - head_.load());
+		// if(current == 0){
+		// 	// rough assumption of concurrency
+		// 	if( (enqueue_count_.load() - enqueue_revoke_.load() - dequeue_count_.load() + dequeue_revoke_.load()) > QueueSize / 2){
+		// 		current = tail_.load() - head_.load();
+		// 		return (current == 0) ? QueueSize : current;
+		// 	}
+		// 	else{
+		// 		return tail_.load() - head_.load();
+		// 	}
+		// }
+		// return current;
 	}
-	void log(void){
+	inline void log(void){
 		colog.put_batch(enqueue_count_.load(),
 			enqueue_revoke_.load(),dequeue_count_.load(),dequeue_revoke_.load(),head_.load(),tail_.load());
 	}
@@ -330,7 +328,7 @@ class FastQueue: public NoMove{
  				approximateSize = QueueList.size(); // update size at end
  			}
  		}
- 		return false;
+ 		return totalCount;
  	}
  	// for handle producer
 	// when delete a handle, queue freed only for new producer

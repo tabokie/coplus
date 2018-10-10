@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <typeinfo>
 
+#include "util.h"
 #include "colog.h"
 #include "fast_queue.h"
 
@@ -41,26 +42,30 @@ struct FiberTask: public Task{
 	}
 };
 
-class Machine{ // simple encap of thread
+class Machine: public NoCopy{ // simple encap of thread
 	std::thread t_;
 	std::atomic<bool>* close_; // using pointer for MoveAssign used in container
+	int* job_count_;
 	// asserting access to close happen in valid range
 	// asserting thread.empty == close_
  public:
 	template <typename FunctionType>
-	Machine(FunctionType&& scheduler): close_(new std::atomic<bool>(false)){
-		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler)](){
+	Machine(FunctionType&& scheduler): close_(new std::atomic<bool>(false)), job_count_(new int(0)){
+		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler), count = job_count_]() mutable{
 	 		while( !close->load() ){
-				schedule();
+				if (schedule()){
+					(*count) ++;
+				}
 	 		}
 		}));
 	}
 	// required for container
-	Machine(Machine&& rhs) : t_(std::move(rhs.t_)){
+	Machine(Machine&& rhs) : t_(std::move(rhs.t_)) {
 		close_ = rhs.close_;
 		rhs.close_ = nullptr;
+		job_count_ = rhs.job_count_;
+		rhs.job_count_ = nullptr;
 	}
-	Machine(const Machine& rhs) = delete;
 	// for container resize larger which is deprecated
  	Machine(): close_(new std::atomic<bool>(true)) { }
  	// just a matching interface
@@ -79,6 +84,11 @@ class Machine{ // simple encap of thread
 		if(close_->load())return; // already closed
 		atomic_store(close_, true); // send out signal to thread
 		t_.join();
+		return ;
+	}
+	void report(void){
+		colog << (std::to_string(*job_count_) + " jobs scheduled");
+		return ;
 	}
 };
 
@@ -110,9 +120,7 @@ Thread::Cleaner(){
 }
 */
 
-
-
-class ThreadPool{
+class ThreadPool: public NoMove{
 
 	FastQueue<std::shared_ptr<Task>> tasks;
 	std::vector<Machine> machines;
@@ -123,10 +131,14 @@ class ThreadPool{
  		threadSize = std::thread::hardware_concurrency(); // one for main thread
  		for(int i = 0; i < threadSize - 1; i++){
  			machines.push_back( //std::thread(
- 				[&](){
+ 				[&]() -> bool {
  					std::shared_ptr<Task> current;
  					bool ret = tasks.pop_hard(current);
- 					if(ret) current->call();
+ 					if(ret){
+ 						current->call();
+ 						return true;
+ 					}
+ 					return false;
  				}
  			);
  		}
@@ -142,10 +154,14 @@ class ThreadPool{
  		else if(newSize > threadSize){
  			for(int i = threadSize; i < newSize; i++){
  				machines.push_back(
-	 				[&](){
+	 				[&]()-> bool{
 	 					std::shared_ptr<Task> current;
 	 					bool ret = tasks.pop_hard(current);
-	 					if(ret) current->call();
+	 					if(ret){
+	 						current->call();
+	 						return true;
+	 					}
+	 					return false;
 	 				}
 	 			);
  			}
@@ -155,6 +171,10 @@ class ThreadPool{
  	}
  	void close(void){
 		std::for_each(machines.begin(), machines.end(), std::mem_fn(&Machine::join));
+ 	}
+ 	void report(void){
+ 		colog << std::to_string(tasks.element_count()) + " jobs left";
+		std::for_each(machines.begin(), machines.end(), std::mem_fn(&Machine::report));
  	}
 	// for function with return value
 	template<

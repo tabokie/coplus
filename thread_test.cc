@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cassert>
 #include <typeinfo>
+#include <thread>
 
 #include "threading.h"
 #include "corand.h"
@@ -24,7 +25,13 @@ int main(void){
 		// colog << (std::string("new task: ") + std::to_string(commonData[i]));
 		futures.push_back(std::move(pool.submit(
 			std::function<int(void)>([&, x = commonData[i]]{
-				// colog << x;
+				// spawn one more thread
+				pool.submit(std::function<int(void)>([]{
+					int count = 1000; // simulate cpu-bound job
+					while(count --)
+						std::this_thread::yield();
+					return 0;
+				}));
 				return x;
 			})
 		)));
@@ -38,22 +45,10 @@ int main(void){
 		sumOfReturns += ret;
 	}
 	pool.close();
+	pool.report(); // left some jobs that spawned from main jobs
 	std::cout << sumOfData << " gets return " << sumOfReturns <<std::endl;
 	assert(sumOfReturns == sumOfData);
-	// one shot test
-	/* 
-	auto ret = pool.submit(
-		std::function<int(void)>([&]{
-			a = corand.UInt(100);
-			return a;
-		})
-	);
-	int retVal = ret.get();
-	colog << retVal;
-	colog << a;
-	pool.close();
-	assert(retVal == a);
-	*/
 	colog << "Safely exit...";
 	return 0;
 }
+
