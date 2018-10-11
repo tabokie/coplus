@@ -167,15 +167,15 @@ class PushOnlyFastStack<std::unique_ptr<ElementType>, unitSize>{
 };
 
 template <typename ElementType>
-class FastStack: public NoMove{
+class SlowQueue: public NoMove{
 	int max_size;
 	std::vector<ElementType> ring;
 	int head, tail; // head pop if < tail, tail push
 	std::mutex lock;
  public:
  	// only head=tail=0 is empty, other is full
- 	FastStack(int maxSize): max_size(maxSize), head(0), tail(0), ring(maxSize) {	}
- 	~FastStack() { }
+ 	SlowQueue(int maxSize): max_size(maxSize), head(0), tail(0), ring(maxSize) {	}
+ 	~SlowQueue() { }
  	bool pop(ElementType& ret){ // get and delete
  		std::lock_guard<std::mutex> local(lock);
  		if(head == tail && tail == 0){
@@ -307,7 +307,7 @@ class FastQueue: public NoMove{
  	using LocalQueueOwnerPtr = std::unique_ptr<FastLocalQueue<ElementType, kLocalQueueSize>>;
  	using LocalQueueRefPtr = FastLocalQueue<ElementType, kLocalQueueSize>*;
 	PushOnlyFastStack<LocalQueueOwnerPtr> QueueList;
-	FastStack<Token> FreeList;
+	SlowQueue<Token> FreeList;
  public:
  	FastQueue(): FreeList(kFreeListSize), QueueList(kQueueMaxCount) { }
  	~FastQueue() { } // causing all local queues' destruction, MUST ensure all handle ref are deleted
