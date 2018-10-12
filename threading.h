@@ -34,11 +34,13 @@ struct FunctionTask: public Task	{
 
 // fiber
 struct FiberTask: public Task{
+	// LPVOID routine;
 	FiberTask() = default;
 	~FiberTask() { }
 	bool call(){
-		// not implemented
-		return false;
+		// LPVOID current = GetCurrentFiber();
+		// SwitchToFiber(routine, current);
+		return true;
 	}
 };
 
@@ -102,7 +104,9 @@ Fiber::yield(condv){
 	SwitchToFiber(mainFiber); // mainFiber is parameter passed to function
 }
 Fiber::return(){
-	return GetFiberData()->SetEmpty();
+	GetFiberData()->SetEmpty();
+	// must explicit switch back to fiber
+	SwitchToFiber(caller);
 }
 condv::notify(){
 	SwitchToFiber(registered[0]); // can call fiber created by other thread
@@ -113,7 +117,8 @@ Machine::Schedule(){
 	task->addData(thisFiber);
 	sonFiber = CreateFiber(0, &(task.front()->call(LPVOID)), task->dataPtr());
 	SwitchToFiber(sonFiber);
-	if(Task.finished())pop();
+	pop(); // already moved to static area
+	// can be called again by id?
 }
 Thread::Cleaner(){
 	for(ptr : GlobalArea){

@@ -31,14 +31,30 @@ Also, this structure contains a partial spec for std::unique_ptr which return na
 
 ### Non-preemptive Coroutine
 
-create_coroutine
-destroy_coroutine
-switch_coroutine
-yield
-notify(condv)
-await_for(coroutine)
-await_for(condv)
-await_for(time)
+Traditional implementation of coroutine includes following interfaces:
+
+* create a coroutine
+
+Each scheduler in ThreadPool is by itself a coroutine. When a task being schedule is a coroutine, the inner call method execute a Switch operation.
+
+* exit a coroutine
+
+To exit a coroutine, we need to know the previous coroutine to go to. To accomplish that, all tasks that is possiblly called as coroutine must take a return coroutine as parameter.
+
+* yield
+
+Simply store the current state and yield to return to return coroutine. A global area is used to store all undone coroutine, and a waiting coroutine must be reinsert into active task queue.
+
+* await
+
+In my implementation, await has many forms:
+
+a) await for funtion
+b) await for std conditon variable
+c) await for unconditional trigger
+d) await for timer
+
+All four of them is in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's coroutine address, `Notify` switch to one of its waiter or simply re-submit as a task.
 
 ## Benchmark
 
