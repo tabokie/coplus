@@ -10,11 +10,11 @@
 
 ## Todos
 * [x] Message Channel
-* [x] Single Thread Pool
-* [x] Multi-Thread Pool with locked queue
+* [x] Many-to-one thread Pool
+* [x] Many-to-many thread Pool with lock-sync queue
 * [x] Thread Pool with wait-free queue
 * [ ] Thread Pool with coroutine
-* [ ] Concurrent tools: multi-player channel
+* [ ] Concurrent tools
 
 ## Components
 
@@ -33,28 +33,28 @@ Also, this structure contains a partial spec for std::unique_ptr which return na
 
 Traditional implementation of coroutine includes following interfaces:
 
-* create a coroutine
+* **create a coroutine**
 
-Each scheduler in ThreadPool is by itself a coroutine. When a task being schedule is a coroutine, the inner call method execute a Switch operation.
+  Each scheduler in ThreadPool is by itself a coroutine. When a task being schedule is a coroutine, the inner call method execute a Switch operation.
 
-* exit a coroutine
+* **exit a coroutine**
 
-To exit a coroutine, we need to know the previous coroutine to go to. To accomplish that, all tasks that is possiblly called as coroutine must take a return coroutine as parameter.
+  To exit a coroutine, we need to know the previous coroutine to go to. To accomplish that, all tasks that is possibly called as coroutine must take a return coroutine as parameter.
 
-* yield
+* **yield**
 
-Simply store the current state and yield to return to return coroutine. A global area is used to store all undone coroutine, and a waiting coroutine must be reinsert into active task queue.
+  Simply store the current state and yield to return to return coroutine. A global area is used to store all undone coroutine, and a waiting coroutine must be re-insert into active task queue.
 
-* await
+* **await**
 
-In my implementation, await has many forms:
+  In my implementation, await has many forms:
 
-a) await for funtion
-b) await for std conditon variable
-c) await for unconditional trigger
-d) await for timer
+  **a)** await for function
+  **b)** await for std condition variable
+  **c)** await for unconditional trigger
+  **d)** await for timer
 
-All four of them is in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's coroutine address, `Notify` switch to one of its waiter or simply re-submit as a task.
+  All four of them is in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's coroutine address, `Notify` switch to one of its waiters or simply re-submit them as tasks.
 
 ## Benchmark
 
