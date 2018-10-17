@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <typeinfo>
 
+#include "fiber_port.h"
 #include "util.h"
 #include "colog.h"
 #include "fast_queue.h"
@@ -17,6 +18,7 @@ namespace coplus {
 
 struct Task {
 	virtual bool call() = 0; // return false if not completed
+	virtual void raw_call() = 0; // return false if not completed
 	virtual ~Task() {}
 };
 
@@ -29,20 +31,50 @@ struct FunctionTask: public Task	{
 		f_();
 		return true;
 	}
+	void raw_call(void){
+		f_();
+	}
 	FunctionType f_;
 };
 
 // fiber
+void proxy(void* pData);
+void yield(RawFiber f);
+
+template <typename FunctionType, typename test = typename std::result_of<FunctionType(RawFiber)>::type>
 struct FiberTask: public Task{
-	// LPVOID routine;
-	FiberTask() = default;
+	RawFiber ret_routine = NilFiber;
+	RawFiber work_routine = NilFiber;
+	bool finished;
+	FiberTask(FunctionType&& f): f_(std::move(f)) { }
 	~FiberTask() { }
-	bool call(){
-		// LPVOID current = GetCurrentFiber();
-		// SwitchToFiber(routine, current);
-		return true;
+	bool call(void){
+		ret_routine = CurrentFiber();
+		if(!work_routine)work_routine = CreateFiber(proxy, this);
+		ToFiber(work_routine);
+		if(CurrentFiber() == ret_routine){
+			finished = false;
+		}
+		else{
+			finished = true;
+			ToFiber(ret_routine);
+		}
+		return finished;
 	}
+	void raw_call(void){
+		f_(ret_routine);
+		return ;
+	}
+	FunctionType f_;
 };
+
+void proxy(void* pData){
+	Task* p = (Task*)pData;
+	p->raw_call();
+}
+void yield(RawFiber f){
+	ToFiber(f);
+}
 
 class Machine: public NoCopy{ // simple encap of thread
 	std::thread t_;
@@ -142,7 +174,13 @@ class ThreadPool: public NoMove{
  					std::shared_ptr<Task> current;
  					bool ret = tasks.pop_hard(current);
  					if(ret){
- 						current->call();
+ 						if(!current->call()){
+ 							// back to pool
+							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+							if(!handle.push_hard(current)){
+								colog << "push fail";
+							}
+ 						}
  						return true;
  					}
  					return false;
@@ -202,10 +240,21 @@ class ThreadPool: public NoMove{
 	// for void return function
 	template<
 	typename FunctionType, 
-	typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType()>::type>::value>::type >
+	typename test = std::enable_if<std::is_void<typename std::result_of<FunctionType()>::type>::value>::type >
 	void submit(FunctionType&& f){
 		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
 		bool status = handle.push_hard(std::make_shared<FunctionTask<FunctionType>>(std::move(f)));
+		if(!status){
+			colog << "Push failed";
+		}
+	}
+	// for void fiber
+	template<
+	typename FunctionType, 
+	typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType(RawFiber)>::type>::value>::type >
+	void go(FunctionType&& f){
+		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+		bool status = handle.push_hard(std::make_shared<FiberTask<FunctionType>>(std::move(f)));
 		if(!status){
 			colog << "Push failed";
 		}

@@ -50,11 +50,14 @@ Traditional implementation of coroutine includes following interfaces:
   In my implementation, await has many forms:
 
   **a)** await for function
+
   **b)** await for std condition variable
+
   **c)** await for unconditional trigger
+
   **d)** await for timer
 
-  All four of them is in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's coroutine address, `Notify` switch to one of its waiters or simply re-submit them as tasks.
+  All four of them are in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's coroutine address, `Notify` switch to one of its waiters or simply re-submit them as tasks.
 
 ## Benchmark
 
