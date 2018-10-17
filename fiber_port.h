@@ -1,5 +1,7 @@
 #pragma once
 
+#include "colog.h"
+
 #if defined(__WIN32) || defined(__WIN64) || defined(_MSC_VER)
 #define WIN_PORT
 #include "Windows.h"
@@ -16,12 +18,16 @@ const RawFiber NilFiber = NULL;
 #endif
 
 // Function Declare //
+void InitEnv(void);
 RawFiber CurrentFiber(void);
 RawFiber NewFiber(void (__stdcall*)(void*), void*);
 void ToFiber(RawFiber);
 
 // Function Implement //
 #ifdef WIN_PORT
+void InitEnv(void){
+	ConvertThreadToFiber(NULL);
+}
 RawFiber CurrentFiber(void){
 	return GetCurrentFiber();
 }

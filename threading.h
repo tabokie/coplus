@@ -16,7 +16,7 @@
 
 namespace coplus {
 
-struct Task {
+struct Task: public NoMove {
 	virtual bool call() = 0; // return false if not completed
 	virtual void raw_call() = 0; // return false if not completed
 	virtual ~Task() {}
@@ -38,19 +38,20 @@ struct FunctionTask: public Task	{
 };
 
 // fiber
-void proxy(void* pData);
+void __stdcall proxy(void* pData);
 void yield(RawFiber f);
 
-template <typename FunctionType, typename test = typename std::result_of<FunctionType(RawFiber)>::type>
+template <typename FunctionType, typename test = typename std::result_of<FunctionType(RawFiber*)>::type>
 struct FiberTask: public Task{
 	RawFiber ret_routine = NilFiber;
 	RawFiber work_routine = NilFiber;
 	bool finished;
-	FiberTask(FunctionType&& f): f_(std::move(f)) { }
+	int cur;
+	FiberTask(FunctionType&& f): f_(std::move(f)) { static int id = 0; cur = id++; }
 	~FiberTask() { }
 	bool call(void){
 		ret_routine = CurrentFiber();
-		if(!work_routine)work_routine = CreateFiber(proxy, this);
+		if(work_routine == NilFiber)work_routine = NewFiber(proxy, this);
 		ToFiber(work_routine);
 		if(CurrentFiber() == ret_routine){
 			finished = false;
@@ -62,13 +63,13 @@ struct FiberTask: public Task{
 		return finished;
 	}
 	void raw_call(void){
-		f_(ret_routine);
+		f_(&ret_routine);
 		return ;
 	}
 	FunctionType f_;
 };
 
-void proxy(void* pData){
+void __stdcall proxy(void* pData){
 	Task* p = (Task*)pData;
 	p->raw_call();
 }
@@ -86,6 +87,7 @@ class Machine: public NoCopy{ // simple encap of thread
 	template <typename FunctionType>
 	Machine(FunctionType&& scheduler): close_(new std::atomic<bool>(false)), job_count_(new int(0)){
 		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler), count=job_count_]() mutable{
+			InitEnv();
 	 		while( !close->load() ){
 				if (schedule()){
 					(*count) ++;
@@ -107,6 +109,7 @@ class Machine: public NoCopy{ // simple encap of thread
  	bool restart(FunctionType&& scheduler){
  		if(!close_->load())return false;
  		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler), count=job_count_]() mutable{
+			InitEnv();
 	 		while( !close->load() ){
 				if (schedule()){
 					(*count) ++;
@@ -251,8 +254,9 @@ class ThreadPool: public NoMove{
 	// for void fiber
 	template<
 	typename FunctionType, 
-	typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType(RawFiber)>::type>::value>::type >
+	typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType(RawFiber*)>::type>::value>::type >
 	void go(FunctionType&& f){
+		colog << "go!";
 		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
 		bool status = handle.push_hard(std::make_shared<FiberTask<FunctionType>>(std::move(f)));
 		if(!status){
