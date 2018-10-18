@@ -5,6 +5,9 @@
 #if defined(__WIN32) || defined(__WIN64) || defined(_MSC_VER)
 #define WIN_PORT
 #include "Windows.h"
+#else
+#define POSIX_PORT
+#include "ucontext.h"
 #endif
 
 namespace coplus {
@@ -13,8 +16,9 @@ namespace coplus {
 #ifdef WIN_PORT
 using RawFiber = LPVOID;
 const RawFiber NilFiber = NULL;
-#else
-// not implemented
+#elif defined(POSIX_PORT)
+using RawFiber = ucontext_t*;
+const RawFiber NilFiber = NULL;
 #endif
 
 // Function Declare //
@@ -31,14 +35,28 @@ void InitEnv(void){
 RawFiber CurrentFiber(void){
 	return GetCurrentFiber();
 }
-RawFiber NewFiber(VOID (__stdcall *f)(LPVOID) , void* p){
+RawFiber NewFiber(void (__stdcall *f)(void*) , void* p){
 	return CreateFiber(0, f, p);
 }
 void ToFiber(RawFiber f){
 	SwitchToFiber(f);
 }
-#else
-// not implemented
+#elif defined(POSIX_PORT)
+void InitEnv(void){
+	return ;
+}
+RawFiber CurrentFiber(void){
+	thread_local RawFiber threadFiber = NULL;
+	return threadFiber;
+}
+RawFiber NewFiber(void (__stdcall* f)(void*), void* p){
+	RawFiber ret;
+	makecontext(&ret, f, p);
+	return ret;
+}
+void ToFiber(RawFiber f){
+	RawFiber threadFiber = CurrentFiber();
+	swapcontext(threadFiber, f); // preserve and update
 #endif
 
 
