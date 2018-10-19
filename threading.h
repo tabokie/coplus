@@ -37,29 +37,26 @@ struct FunctionTask: public Task	{
 
 // fiber
 void __stdcall _co_proxy(void* pData);
-void _co_yield(RawFiber f);
-#define go(_thread_pool)									do{void* _p_go_base = (void*)(new RawFiber());_thread_pool.submit(_p_go_base, _rm_lbracket_ad_rclosure
-#define _rm_lbracket_ad_rclosure(x)				x);}while(0)
-#define yield															_co_yield(*((RawFiber*)_p_go_base))
+void yield();
 
 template <typename FunctionType, typename test = typename std::result_of<FunctionType()>::type>
 struct FiberTask: public Task{
-	std::unique_ptr<RawFiber> ret_routine = nullptr;
+	RawFiber ret_routine = nullptr;
 	RawFiber work_routine = NilFiber;
 	bool finished;
 	int cur;
-	FiberTask(void* p, FunctionType&& f):ret_routine((RawFiber*)p), f_(std::move(f)) { static int id = 0; cur = id++; }
+	FiberTask(FunctionType&& f): f_(std::move(f)) { static int id = 0; cur = id++; }
 	~FiberTask() { }
 	bool call(void){
-		*ret_routine = CurrentFiber();
+		ret_routine = CurrentFiber();
 		if(work_routine == NilFiber)work_routine = NewFiber(_co_proxy, this);
 		ToFiber(work_routine);
-		if(CurrentFiber() == *ret_routine){
+		if(CurrentFiber() == ret_routine){
 			finished = false;
 		}
 		else{
 			finished = true;
-			ToFiber(*ret_routine);
+			ToFiber(ret_routine);
 		}
 		return finished;
 	}
@@ -71,8 +68,8 @@ void __stdcall _co_proxy(void* pData){
 	Task* p = (Task*)pData;
 	p->raw_call();
 }
-void _co_yield(RawFiber f){
-	ToFiber(f);
+void yield(){
+	ToFiber(); // no input
 }
 
 class Machine: public NoCopy{ // simple encap of thread
@@ -253,12 +250,27 @@ class ThreadPool: public NoMove{
 	template<
 	typename FunctionType, 
 	typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType()>::type>::value>::type >
-	void submit(void* p, FunctionType&& f){
+	void go(FunctionType&& f){
 		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
-		bool status = handle.push_hard(std::make_shared<FiberTask<FunctionType>>(p, std::move(f)));
+		bool status = handle.push_hard(std::make_shared<FiberTask<FunctionType>>(std::move(f)));
 		if(!status){
 			colog << "Push failed";
 		}
+	}
+
+	template<
+	typename FunctionType, 
+	typename test = typename std::enable_if<!bool(std::is_void<typename std::result_of<FunctionType()>::type>::value)>::type >
+	std::future<typename std::result_of<FunctionType()>::type> go(FunctionType&& f){
+		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+		using ResultType = typename std::result_of<FunctionType()>::type;
+		std::packaged_task<ResultType()> packaged_f(std::move(f));
+		auto ret = (packaged_f.get_future());
+		bool status = handle.push_hard(std::make_shared<FiberTask<std::packaged_task<ResultType()>>>(std::move(packaged_f)));
+		if(!status){
+			colog << "Push failed";
+		}
+		return (ret);
 	}
 
 

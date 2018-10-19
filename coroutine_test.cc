@@ -13,18 +13,16 @@ constexpr int testSize = 100;
 
 int main(void){
 	ThreadPool pool;
-	bool status = false;
-	go(pool)(std::function<void(void)>([&](){
-		colog << "In Loop Visit";
-		int count = 100;
-		while(count --)
-			yield;
-			// yield(*FiberBase::ret_routine());
-		colog << "Out Loop Visit";
-		status = true;
-		return;
-	}));
-	while(!status);
+  // User Case with returned function
+	auto trace = pool.go(std::bind([&](int ret)-> int{
+	  	colog << "In Loop Visit";
+	  	int count = 100;
+	  	while(count --)
+	  		yield();
+	  	colog << "Out Loop Visit";
+	  	return ret;
+	  }, 42));
+  colog << trace.get(); // expect 42
 
 	pool.close();
 	pool.report(); // left some jobs that spawned from main jobs

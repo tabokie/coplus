@@ -25,7 +25,7 @@ const RawFiber NilFiber = NULL;
 void InitEnv(void);
 RawFiber CurrentFiber(void);
 RawFiber NewFiber(void (__stdcall*)(void*), void*);
-void ToFiber(RawFiber);
+void ToFiber(RawFiber target = NilFiber);
 
 // Function Implement //
 #ifdef WIN_PORT
@@ -38,8 +38,21 @@ RawFiber CurrentFiber(void){
 RawFiber NewFiber(void (__stdcall *f)(void*) , void* p){
 	return CreateFiber(0, f, p);
 }
+// Assertion for correctness //
+// for coroutine block A{}
+// enter: ToFiber(A) and exit: ToFiber(ret_addr) happen in the same thread continuously
+// even for nested coroutine, 
+// child routine is a new task that executes in another thread or after parent task yields
 void ToFiber(RawFiber f){
-	SwitchToFiber(f);
+	thread_local RawFiber trace = NilFiber;
+	RawFiber temp = trace;
+	trace = CurrentFiber();
+	if(f == NilFiber){
+		SwitchToFiber(temp); // return
+	}
+	else{
+		SwitchToFiber(f);		
+	}
 }
 #elif defined(POSIX_PORT)
 // void InitEnv(void){
