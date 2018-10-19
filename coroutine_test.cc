@@ -14,11 +14,12 @@ constexpr int testSize = 100;
 int main(void){
 	ThreadPool pool;
 	bool status = false;
-	pool.go(std::function<void(RawFiber*)>([&](RawFiber* ret){
+	go(pool)(std::function<void(void)>([&](){
 		colog << "In Loop Visit";
 		int count = 100;
 		while(count --)
-			yield(*ret);
+			yield;
+			// yield(*FiberBase::ret_routine());
 		colog << "Out Loop Visit";
 		status = true;
 		return;
