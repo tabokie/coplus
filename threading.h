@@ -39,6 +39,7 @@ struct FunctionTask: public Task	{
 void __stdcall _co_proxy(void* pData);
 void _co_yield(RawFiber f);
 #define go(_thread_pool)									do{void* _p_go_base = (void*)(new RawFiber());_thread_pool.submit(_p_go_base, _rm_lbracket_ad_rclosure
+#define tgo(_thread_pool, _tracer)				do{void* _p_go_base = (void*)(new RawFiber());_tracer = _thread_pool.submit(_p_go_base, _rm_lbracket_ad_rclosure
 #define _rm_lbracket_ad_rclosure(x)				x);}while(0)
 #define yield															_co_yield(*((RawFiber*)_p_go_base))
 
@@ -259,6 +260,21 @@ class ThreadPool: public NoMove{
 		if(!status){
 			colog << "Push failed";
 		}
+	}
+	// for return fiber
+	template<
+	typename FunctionType, 
+	typename test = typename std::enable_if<!bool(std::is_void<typename std::result_of<FunctionType()>::type>::value)>::type >
+	std::future<typename std::result_of<FunctionType()>::type> submit(void* p, FunctionType&& f){
+		FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+		using ResultType = typename std::result_of<FunctionType()>::type;
+		std::packaged_task<ResultType()> packaged_f(std::move(f));
+		auto ret = (packaged_f.get_future());
+		bool status = handle.push_hard(std::make_shared<FiberTask<std::packaged_task<ResultType()>>>(p, std::move(packaged_f)));
+		if(!status){
+			colog << "Push failed";
+		}
+		return (ret);
 	}
 
 

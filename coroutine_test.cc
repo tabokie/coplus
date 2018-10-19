@@ -11,19 +11,29 @@ using namespace coplus;
 
 constexpr int testSize = 100;
 
+// Assertion
+// for block A{}
+// ToFiber(A)
+// ToFiber(ret)
+// happens in the same thread
+
+
 int main(void){
 	ThreadPool pool;
 	bool status = false;
-	go(pool)(std::function<void(void)>([&](){
+	std::future<int> future;
+
+	tgo(pool, future)(std::bind([&](int a)-> int{
 		colog << "In Loop Visit";
 		int count = 100;
 		while(count --)
 			yield;
-			// yield(*FiberBase::ret_routine());
+		colog << (1,2);
 		colog << "Out Loop Visit";
 		status = true;
-		return;
-	}));
+		return a;
+	}, 7));
+	colog << future.get();
 	while(!status);
 
 	pool.close();

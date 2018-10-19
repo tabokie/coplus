@@ -45,6 +45,31 @@ Traditional implementation of coroutine includes following interfaces:
 
   Simply store the current state and yield to return to return coroutine. A global area is used to store all undone coroutine, and a waiting coroutine must be re-insert into active task queue.
 
+  ```c++
+  // Use Case with void function:
+  ThreadPool pool;
+  go(pool)(std::function<void(void)>([&](){
+		colog << "In Loop Visit";
+		int count = 100;
+		while(count --)
+			yield;
+		colog << "Out Loop Visit";
+		return;
+	}));
+	// User Case with returned function
+	std::future<int> trace;
+	tgo(pool, trace)(std::bind([&](int ret)-> int{
+		colog << "In Loop Visit";
+		int count = 100;
+		while(count --)
+			yield;
+		colog << "Out Loop Visit";
+		status = true;
+		return ret;
+	}, 42));
+	trace.get(); // expect 42
+  ```
+
 * **await**
 
   In my implementation, await has many forms:

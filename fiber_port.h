@@ -25,7 +25,7 @@ const RawFiber NilFiber = NULL;
 void InitEnv(void);
 RawFiber CurrentFiber(void);
 RawFiber NewFiber(void (__stdcall*)(void*), void*);
-void ToFiber(RawFiber);
+void ToFiber(RawFiber target = NilFiber);
 
 // Function Implement //
 #ifdef WIN_PORT
@@ -38,9 +38,26 @@ RawFiber CurrentFiber(void){
 RawFiber NewFiber(void (__stdcall *f)(void*) , void* p){
 	return CreateFiber(0, f, p);
 }
+
 void ToFiber(RawFiber f){
 	SwitchToFiber(f);
 }
+// // Assertion
+// // for block A{}
+// // ToFiber(A)
+// // ToFiber(ret)
+// // happens in the same thread
+// void ToFiber(RawFiber f){
+// 	thread_local RawFiber trace = NilFiber;
+// 	RawFiber temp = trace;
+// 	trace = CurrentFiber();
+// 	if(f == NilFiber){
+// 		SwitchToFiber(temp); // return
+// 	}
+// 	else{
+// 		SwitchToFiber(f); // target
+// 	}
+// }
 #elif defined(POSIX_PORT)
 // void InitEnv(void){
 // 	// empty
