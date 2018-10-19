@@ -10,24 +10,22 @@
 
 ## Todos
 * [x] Message Channel
-* [x] Many-to-one thread Pool
-* [x] Many-to-many thread Pool with lock-sync queue
-* [x] Thread Pool with wait-free queue
-* [ ] Thread Pool with coroutine
+* [x] Many-to-one thread pool
+* [x] Many-to-many thread pool with lock-sync queue
+* [x] Thread pool with wait-free queue
+* [ ] Thread pool with coroutine
 * [ ] Concurrent tools
 
 ## Components
 
-### Concurrent Data Structure
+### Thread Pool
 
-* `PushOnlyFastStack`: provide a interface for concurrent data collection with **push** and **retrieve-by-id**.
-Also, this structure contains a partial spec for std::unique_ptr which return naked pointer as retrived result.
+Targeted at light-weight task scheduling, ThreadPool provides simple interface for complex concurrent controls: 
 
-* `SlowQueue`: filo queue sync using a std mutex, used in low-concurrency condition like freelist in `FastQueue`.
+*  `Machine`: Runs scheduler routine on user thread, easy to `close` and `restart`.
+*  `Task` : Provides base interface for Schedulable job, easy to implement with `bool call()`, `void raw_call()`.
+*  `ThreadPool` : Includes `submit`, `resize`, `close`, `report` functions.
 
-* `FastLocalQueue`: provide a multi-consumer single-producer queue structure, which is wait-free and highly optimized.
-
-* `FastQueue`: a synthesize structure composed of the structures mentioned before. Provide a fully concurrent filo queue structure.
 
 ### Non-preemptive Coroutine
 
@@ -56,7 +54,7 @@ Traditional implementation of coroutine includes following interfaces:
       colog << "Out Loop Visit";
       return;
     }));
-  // User Case with returned function
+  // Use Case with returned function
   auto trace = pool.go(std::bind([&](int ret)-> int{
       colog << "In Loop Visit";
       int count = 100;
@@ -82,6 +80,21 @@ Traditional implementation of coroutine includes following interfaces:
   **d)** await for timer
 
   All four of them are in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's coroutine address, `Notify` switch to one of its waiters or simply re-submit them as tasks.
+
+### Concurrent Data Structure
+
+- `PushOnlyFastStack`: Provide a interface for concurrent data collection with **push** and **retrieve-by-id**.
+  Also, This structure contains a partial spec for std::unique_ptr which return naked pointer as retrived result.
+- `SlowQueue`: Filo queue sync using a std mutex, used in low-concurrency condition like freelist in `FastQueue`.
+- `FastLocalQueue`: Provide a multi-consumer single-producer queue structure, which is wait-free and highly optimized.
+- `FastQueue`: A synthesize structure composed of the structures mentioned before. Provide a fully concurrent filo queue structure.
+
+### Concurrent Tools
+
+* `Channel`: Message transport tool mocking Go's chan. Current implementation uses std mutex and condition_variable to provide basic function, further optimization will introduce lock-free shared memory.
+* `colog`: Message output tools merely for debug or strong ordering condition, synchronized with plain lock. Enhanced implementation could uses thread local buffer to increase throughput, or `FastQueue` to avoid blocking. 
+* `cotimer`: Thread local timer.
+* `Socket`
 
 ## Benchmark
 
