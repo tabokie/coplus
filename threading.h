@@ -9,156 +9,15 @@
 #include <algorithm>
 #include <typeinfo>
 
-#include "fiber_port.h"
 #include "util.h"
 #include "colog.h"
 #include "fast_queue.h"
+#include "task.h"
+#include "machine.h"
 
 namespace coplus {
 
-struct Task: public NoMove {
-	virtual bool call() = 0; // return false if not completed
-	virtual ~Task() {}
-	virtual void raw_call() = 0;
-};
-
-// blocking function
-template <typename FunctionType>
-struct FunctionTask: public Task	{
-	FunctionTask(FunctionType&& f): f_(std::move(f)) { }
-	~FunctionTask(){ }
-	bool call(){
-		f_();
-		return true;
-	}
-	void raw_call(){f_();}
-	FunctionType f_;
-};
-
-// fiber
-void __stdcall _co_proxy(void* pData);
-void yield();
-
-template <typename FunctionType, typename test = typename std::result_of<FunctionType()>::type>
-struct FiberTask: public Task{
-	RawFiber ret_routine = nullptr;
-	RawFiber work_routine = NilFiber;
-	bool finished;
-	int cur;
-	FiberTask(FunctionType&& f): f_(std::move(f)) { static int id = 0; cur = id++; }
-	~FiberTask() { }
-	bool call(void){
-		ret_routine = CurrentFiber();
-		if(work_routine == NilFiber)work_routine = NewFiber(_co_proxy, this);
-		ToFiber(work_routine);
-		if(CurrentFiber() == ret_routine){
-			finished = false;
-		}
-		else{
-			finished = true;
-			ToFiber(ret_routine);
-		}
-		return finished;
-	}
-	void raw_call(){f_();}
-	FunctionType f_;
-};
-
-void __stdcall _co_proxy(void* pData){
-	Task* p = (Task*)pData;
-	p->raw_call();
-}
-void yield(){
-	ToFiber(); // no input
-}
-
-class Machine: public NoCopy{ // simple encap of thread
-	std::thread t_;
-	std::atomic<bool>* close_; // using pointer for MoveAssign used in container
-	int* job_count_;
-	// asserting access to close happen in valid range
-	// asserting thread.empty == close_
- public:
-	template <typename FunctionType>
-	Machine(FunctionType&& scheduler): close_(new std::atomic<bool>(false)), job_count_(new int(0)){
-		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler), count=job_count_]() mutable{
-			InitEnv();
-	 		while( !close->load() ){
-				if (schedule()){
-					(*count) ++;
-				}
-	 		}
-		}));
-	}
-	// required for container
-	Machine(Machine&& rhs) : t_(std::move(rhs.t_)) {
-		close_ = rhs.close_;
-		rhs.close_ = nullptr;
-		job_count_ = rhs.job_count_;
-		rhs.job_count_ = nullptr;
-	}
-	// for container resize larger which is deprecated
- 	Machine(): close_(new std::atomic<bool>(true)) { }
- 	// just a matching interface
- 	template <typename FunctionType>
- 	bool restart(FunctionType&& scheduler){
- 		if(!close_->load())return false;
- 		t_ = std::move(std::thread([&, close=close_, schedule=std::move(scheduler), count=job_count_]() mutable{
-			InitEnv();
-	 		while( !close->load() ){
-				if (schedule()){
-					(*count) ++;
-				}
-	 		}
-		}));
-		return true;
- 	}
-	~Machine() { delete close_; }
-	void join(void){
-		if(close_->load())return; // already closed
-		atomic_store(close_, true); // send out signal to thread
-		t_.join();
-		return ;
-	}
-	void report(void){
-		colog << (std::to_string(*job_count_) + " jobs scheduled");
-		return ;
-	}
-};
-
-/*
-// landmark for coroutine //
-// Coroutine have to be stored globally into a buffer
-Fiber::yield(condv){
-	condv->register(GetCurrentFiber());
-	SwitchToFiber(mainFiber); // mainFiber is parameter passed to function
-}
-Fiber::return(){
-	GetFiberData()->SetEmpty();
-	// must explicit switch back to fiber
-	SwitchToFiber(caller);
-}
-condv::notify(){
-	SwitchToFiber(registered[0]); // can call fiber created by other thread
-}
-Machine::Schedule(){
-	if(task.coroutine());
-	moveTaskToStatic(task); // maybe init in static area, saving archive shared pointer
-	task->addData(thisFiber);
-	sonFiber = CreateFiber(0, &(task.front()->call(LPVOID)), task->dataPtr());
-	SwitchToFiber(sonFiber);
-	pop(); // already moved to static area
-	// can be called again by id?
-}
-Thread::Cleaner(){
-	for(ptr : GlobalArea){
-		if(ptr->dead())erase(ptr);
-	}
-}
-*/
-
 class ThreadPool: public NoMove{
-
 	FastQueue<std::shared_ptr<Task>> tasks;
 	std::vector<Machine> machines;
 	size_t threadSize;
@@ -186,7 +45,10 @@ class ThreadPool: public NoMove{
  			);
  		}
  	}
- 	~ThreadPool(){ }
+ 	~ThreadPool(){
+ 		close();
+ 		report();
+ 	}
  	void resize(size_t newSize){
  		std::lock_guard<std::mutex> local(mutating);
  		if(newSize < threadSize){
@@ -257,7 +119,7 @@ class ThreadPool: public NoMove{
 			colog << "Push failed";
 		}
 	}
-
+	// for fiber with return value
 	template<
 	typename FunctionType, 
 	typename test = typename std::enable_if<!bool(std::is_void<typename std::result_of<FunctionType()>::type>::value)>::type >
@@ -274,7 +136,10 @@ class ThreadPool: public NoMove{
 	}
 
 
-};
+}; // ThreadPool
+
+ThreadPool kPool;
+
 
 } // namespace coplus
 

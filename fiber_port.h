@@ -51,7 +51,7 @@ void ToFiber(RawFiber f){
 		SwitchToFiber(temp); // return
 	}
 	else{
-		SwitchToFiber(f);		
+		SwitchToFiber(f);
 	}
 }
 #elif defined(POSIX_PORT)
