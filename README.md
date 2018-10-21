@@ -85,8 +85,8 @@ Traditional implementation of coroutine includes following interfaces:
   });
   colog << trace.get();
 ```
-
-​	 **b)** await for unconditional trigger
+&emsp;&emsp;
+**b)** await for unconditional trigger
 
 ```c++
   // Use Case
@@ -107,8 +107,8 @@ Traditional implementation of coroutine includes following interfaces:
   });
   colog << trace.get(); // should be 7 here;
 ```
-
-​	 **c)** await for timer
+&emsp;&emsp;
+**c)** await for timer
 
 All four of them are in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's 			coroutine address, `Notify` switch to one of its waiters or simply re-submit them as tasks.
 
