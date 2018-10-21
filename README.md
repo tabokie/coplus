@@ -13,7 +13,7 @@
 * [x] Many-to-one thread pool
 * [x] Many-to-many thread pool with lock-sync queue
 * [x] Thread pool with wait-free queue
-* [ ] Thread pool with coroutine
+* [x] Thread pool with coroutine
 * [ ] Concurrent tools
 
 ## Components
@@ -73,7 +73,40 @@ Traditional implementation of coroutine includes following interfaces:
 
   **a)** await for function
 
+```c++
+  // Use Case
+  auto trace = go(()-> int{
+    int count = 100;
+    while(count--){
+      auto trace = await([]{return 7;});
+      colog << trace.get(); // no blocking here
+    }
+    return 42;
+  });
+  colog << trace.get();
+```
+
   **b)** await for unconditional trigger
+
+```c++
+  // Use Case
+  Trigger lock = NewTrigger;
+  int data = -1;
+  auto trace = go([&]()-> int{
+    while(true){
+      await(lock);
+      // need sync if more task notify lock
+      if(data > 0)break;
+    }
+    return data;
+  });
+  go([&]{
+    data = 7;
+    notify(lock);
+    return ;
+  });
+  colog << trace.get(); // should be 7 here;
+```
 
   **c)** await for timer
 

@@ -20,7 +20,7 @@ template <
 typename FunctionType, 
 typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType()>::type>::value>::type>
 void await(FunctionType&& func){
-	Trigger temp = TriggerData::NewTrigger();
+	Trigger temp = NewTrigger();
 	FiberData::trigger = temp;
 	FiberData::wait_for_task = std::make_shared<FiberTask<std::function<void(void)>>>([=, f=std::move(func)](){
 		func();
@@ -37,7 +37,7 @@ template<
 typename FunctionType, 
 typename test = typename std::enable_if<!bool(std::is_void<typename std::result_of<FunctionType()>::type>::value)>::type >
 std::future<typename std::result_of<FunctionType()>::type> await(FunctionType&& func){
-	Trigger temp = TriggerData::NewTrigger();
+	Trigger temp = NewTrigger();
 	FiberData::trigger = temp;
 	using ResultType = typename std::result_of<FunctionType()>::type;
 	std::packaged_task<ResultType()> packaged_f([=, f=std::move(func)]{

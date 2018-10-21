@@ -25,12 +25,9 @@ struct TriggerData{
 		std::lock_guard<std::mutex> local(lk);
 		waiters.push_back(id);
 	}
-	static std::shared_ptr<TriggerData> NewTrigger(void){
-		return std::make_shared<TriggerData>();
-	}
 };
 using Trigger = std::shared_ptr<TriggerData>;
-
+Trigger NewTrigger(void);
 
 struct FiberData { // work-around for context-free function task
 	static thread_local Task::TaskStatus public_status;
