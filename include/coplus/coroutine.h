@@ -61,6 +61,9 @@ void await(Trigger trigger){
 	return ;
 }
 
+
+// trigger //
+// semantic: give target the permission to run, no ordering in current context	
 void notify(Trigger trigger){
 	if(!trigger)return ;
 	std::lock_guard<std::mutex> local(trigger->lk);
@@ -75,8 +78,7 @@ void notify(Trigger trigger){
 	return ;
 }
 
-// trigger //
-// semantic: give target the permission to run, no ordering in current context	
+
 
 }
 
