@@ -9,20 +9,24 @@
 #include <algorithm>
 #include <typeinfo>
 
-#include "util.h"
-#include "colog.h"
-#include "fast_queue.h"
-#include "task.h"
-#include "machine.h"
+#include "coplus/util.h"
+#include "coplus/colog.h"
+#include "coplus/fast_queue.h"
+#include "coplus/task.h"
+#include "coplus/fiber_task.h"
+#include "coplus/machine.h"
 
 namespace coplus {
 
 class ThreadPool: public NoMove{
-	FastQueue<std::shared_ptr<Task>> tasks;
+	// Table<std::shared_ptr<Task>> global_tasks;
 	std::vector<Machine> machines;
 	size_t threadSize;
 	std::mutex mutating; // for structure mutating, lock all
  public:
+	FastQueue<std::shared_ptr<Task>> tasks;
+ 	std::mutex protect_waiters;
+	std::vector<std::shared_ptr<Task>> wait_queue;
  	ThreadPool(){
  		threadSize = std::thread::hardware_concurrency(); // one for main thread
  		for(int i = 0; i < threadSize - 1; i++){
@@ -31,15 +35,34 @@ class ThreadPool: public NoMove{
  					std::shared_ptr<Task> current;
  					bool ret = tasks.pop_hard(current);
  					if(ret){
- 						if(!current->call()){
- 							// back to pool
-							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
-							if(!handle.push_hard(current)){
-								colog << "push fail";
-							}
+ 						switch(current->call()){
+ 							case Task::kFinished:
+ 							break;
+ 							case Task::kReady:
+ 							{
+	 							// back to pool
+	 							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+								if(!handle.push_hard(current)){
+									colog << "push fail";
+								}	
+ 							}
+ 							break;
+ 							case Task::kWaiting:{
+	 							protect_waiters.lock();
+	 							int id = wait_queue.size();
+	 							wait_queue.push_back(current);
+	 							protect_waiters.unlock();
+	 							FiberData::trigger->Register(id);
+	 							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+	 							if(!handle.push_hard(FiberData::wait_for_task)){
+	 								colog << "push fail";
+	 							}	
+ 							}
+ 							break;
  						}
  						return true;
  					}
+ 					// fail to execute
  					return false;
  				}
  			);

@@ -3,9 +3,9 @@
 #include <typeinfo>
 #include <thread>
 
-#include "corand.h"
-#include "colog.h"
-#include "coroutine.h"
+#include "coplus/corand.h"
+#include "coplus/colog.h"
+#include "coplus/coroutine.h"
 
 using namespace coplus;
 
@@ -16,8 +16,10 @@ int main(void){
 	auto trace = go(std::bind([&](int ret)-> int{
 	  	colog << "In Loop Visit";
 	  	int count = 100;
-	  	while(count --)
-	  		yield();
+	  	while(count --){
+	  		auto trace = await([]{return 7;});
+	  		colog << trace.get();
+	  	}
 	  	colog << "Out Loop Visit";
 	  	return ret;
 	  }, 42));

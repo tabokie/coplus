@@ -9,10 +9,10 @@ using std::endl;
 
 #include <condition_variable>
 
-#include "threading.h"
-#include "channel.h"
-#include "colog.h"
-#include "corand.h"
+#include "coplus/thread_pool.h"
+#include "coplus/channel.h"
+#include "coplus/colog.h"
+#include "coplus/corand.h"
 
 using namespace coplus;
 

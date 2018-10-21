@@ -11,7 +11,7 @@
 #include <queue>
 #include <cassert>
 
-#include "colog.h"
+#include "coplus/colog.h"
 
 namespace coplus{
 

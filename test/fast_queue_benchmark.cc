@@ -1,7 +1,7 @@
-#include "threading.h"
-#include "fast_queue.h"
-#include "colog.h"
-#include "cotimer.h"
+#include "coplus/thread_pool.h"
+#include "coplus/fast_queue.h"
+#include "coplus/colog.h"
+#include "coplus/cotimer.h"
 
 #include <functional>
 

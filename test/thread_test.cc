@@ -3,9 +3,9 @@
 #include <typeinfo>
 #include <thread>
 
-#include "threading.h"
-#include "corand.h"
-#include "colog.h"
+#include "coplus/thread_pool.h"
+#include "coplus/corand.h"
+#include "coplus/colog.h"
 
 using namespace coplus;
 

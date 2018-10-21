@@ -13,8 +13,8 @@
 #include <algorithm> // std::min
 #include <cstdint>
 
-#include "util.h"
-#include "corand.h"
+#include "coplus/util.h"
+#include "coplus/corand.h"
 
 namespace coplus{
 // Design Overview //
