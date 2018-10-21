@@ -33,7 +33,7 @@ class PushOnlyFastStack: public NoMove{
 	std::atomic<int> end; // point to the first empty slot, meaning size
 	size_t max_size;
  public:
- 	PushOnlyFastStack(size_t maxSize): max_size(maxSize){
+ 	PushOnlyFastStack(size_t maxSize = 100): max_size(maxSize){
  		stacks = new std::atomic<ElementType*>[(maxSize+unitSize-1) / unitSize];
  		for(int i = 0; i < (maxSize+unitSize-1) / unitSize; i++)
  			stacks[i].store((ElementType*)NULL);

@@ -67,10 +67,17 @@ void await(Trigger trigger){
 void notify(Trigger trigger){
 	if(!trigger)return ;
 	std::lock_guard<std::mutex> local(trigger->lk);
-	std::lock_guard<std::mutex> protect_waiters_local(kPool.protect_waiters);
+	// std::lock_guard<std::mutex> protect_waiters_local(kPool.protect_waiters);
 	FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&kPool.tasks);
+	std::shared_ptr<Task> pTask;
 	for(auto id: trigger->waiters){
-		bool status = handle.push_hard(kPool.wait_queue[id]);
+		bool status = kPool.wait_queue.get(id, pTask);
+		if(!status){
+			colog << "wait queue fail";
+			break;
+		}
+		status = handle.push_hard(pTask);
+		// bool status = handle.push_hard(kPool.wait_queue[id]);
 		if(!status){
 			colog << "push fail";
 		}

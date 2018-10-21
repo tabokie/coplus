@@ -25,8 +25,9 @@ class ThreadPool: public NoMove{
 	std::mutex mutating; // for structure mutating, lock all
  public:
 	FastQueue<std::shared_ptr<Task>> tasks;
- 	std::mutex protect_waiters;
-	std::vector<std::shared_ptr<Task>> wait_queue;
+	PushOnlyFastStack<std::shared_ptr<Task>> wait_queue;
+ 	// std::mutex protect_waiters;
+	// std::vector<std::shared_ptr<Task>> wait_queue;
  	ThreadPool(){
  		threadSize = std::thread::hardware_concurrency(); // one for main thread
  		for(int i = 0; i < threadSize - 1; i++){
@@ -47,11 +48,13 @@ class ThreadPool: public NoMove{
 								}	
  							}
  							break;
- 							case Task::kWaiting:{
-	 							protect_waiters.lock();
-	 							int id = wait_queue.size();
-	 							wait_queue.push_back(current);
-	 							protect_waiters.unlock();
+ 							case Task::kWaiting:
+ 							{
+ 								int id = wait_queue.push(current);
+	 							// protect_waiters.lock();
+	 							// int id = wait_queue.size();
+	 							// wait_queue.push_back(current);
+	 							// protect_waiters.unlock();
 	 							FiberData::trigger->Register(id);
 	 							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
 	 							if(!handle.push_hard(FiberData::wait_for_task)){
@@ -86,7 +89,32 @@ class ThreadPool: public NoMove{
 	 					std::shared_ptr<Task> current;
 	 					bool ret = tasks.pop_hard(current);
 	 					if(ret){
-	 						current->call();
+	 						switch(current->call()){
+	 							case Task::kFinished:
+	 							break;
+	 							case Task::kReady:
+	 							{
+		 							// back to pool
+		 							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+									if(!handle.push_hard(current)){
+										colog << "push fail";
+									}	
+	 							}
+	 							break;
+	 							case Task::kWaiting:{
+ 									int id = wait_queue.push(current);
+		 							// protect_waiters.lock();
+		 							// int id = wait_queue.size();
+		 							// wait_queue.push_back(current);
+		 							// protect_waiters.unlock();
+		 							FiberData::trigger->Register(id);
+		 							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+		 							if(!handle.push_hard(FiberData::wait_for_task)){
+		 								colog << "push fail";
+		 							}	
+	 							}
+	 							break;
+	 						}
 	 						return true;
 	 					}
 	 					return false;
