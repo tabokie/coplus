@@ -29,6 +29,8 @@ Targeted at light-weight task scheduling, ThreadPool provides simple interface f
 
 ### Non-preemptive Coroutine
 
+A limitation in coroutine's usage is worth notice: all coroutine methods can't be called in a regular thread, but in a thread-pool managed routine. To start a program main entry in thread-pool, use `co_main` instead.
+
 Traditional implementation of coroutine includes following interfaces:
 
 * **create a coroutine**

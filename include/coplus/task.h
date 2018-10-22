@@ -5,7 +5,6 @@
 
 #include "coplus/util.h"
 
-
 namespace coplus{
 
 struct Task: public NoMove {

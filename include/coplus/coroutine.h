@@ -4,18 +4,18 @@
 
 namespace coplus{
 
-#define go(x)				kPool.go(x);
-#define submit(x)		kPool.go(x);
+#define go(x)				coplus::kPool.go(x);
+#define submit(x)		coplus::kPool.go(x);
+
+// forward declaration
+int main(int argc, char** argv);
 
 // yield //
 // semantic: hold for visible interval and run
-void yield(){
-	ToFiber(); // no input
-	FiberData::public_status = Task::kReady; // reschedule to ready queue
-}
+void yield();
+
 // await //
 // semantic: run after target in global order, target is endable
-
 template <
 typename FunctionType, 
 typename test = typename std::enable_if<std::is_void<typename std::result_of<FunctionType()>::type>::value>::type>
@@ -52,40 +52,12 @@ std::future<typename std::result_of<FunctionType()>::type> await(FunctionType&& 
 	FiberData::public_status = Task::kReady;
 	return ret;
 }
-
-void await(Trigger trigger){
-	FiberData::trigger = trigger;
-	FiberData::public_status = Task::kWaiting;
-	ToFiber();
-	FiberData::public_status = Task::kReady;
-	return ;
-}
+void await(Trigger trigger);
 
 
 // trigger //
 // semantic: give target the permission to run, no ordering in current context	
-void notify(Trigger trigger){
-	if(!trigger)return ;
-	std::lock_guard<std::mutex> local(trigger->lk);
-	// std::lock_guard<std::mutex> protect_waiters_local(kPool.protect_waiters);
-	FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&kPool.tasks);
-	std::shared_ptr<Task> pTask;
-	for(auto id: trigger->waiters){
-		bool status = kPool.wait_queue.get(id, pTask);
-		if(!status){
-			colog << "wait queue fail";
-			break;
-		}
-		status = handle.push_hard(pTask);
-		// bool status = handle.push_hard(kPool.wait_queue[id]);
-		if(!status){
-			colog << "push fail";
-		}
-	}
-	return ;
-}
-
-
+void notify(Trigger trigger);
 
 }
 

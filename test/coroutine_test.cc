@@ -3,6 +3,7 @@
 #include <typeinfo>
 #include <thread>
 
+#define USE_USER_MAIN
 #include "coplus/corand.h"
 #include "coplus/colog.h"
 #include "coplus/coroutine.h"
@@ -11,14 +12,14 @@ using namespace coplus;
 
 constexpr int testSize = 100;
 
-int main(void){
+int coplus::main(int argc, char** argv){
   // Use Case with returned function
 	auto trace = go(std::bind([&](int ret)-> int{
 	  	colog << "In Loop Visit";
 	  	int count = 100;
 	  	while(count --){
 	  		auto trace = await([]{return 7;});
-	  		colog << trace.get();
+	  		// colog << trace.get();
 	  	}
 	  	colog << "Out Loop Visit";
 	  	return ret;

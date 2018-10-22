@@ -1,11 +1,11 @@
-#ifndef COPLUS_THREADING_H_
-#define COPLUS_THREADING_H_
+#pragma once
 
 #include <vector>
 #include <thread>
 #include <queue>
 #include <type_traits>
 #include <future>
+#include <chrono>
 #include <algorithm>
 #include <typeinfo>
 
@@ -68,11 +68,58 @@ class ThreadPool: public NoMove{
  					// fail to execute
  					return false;
  				}
- 			);
+ 			); // worker thread end
+ 			// main thread put at detor
  		}
  	}
+ 	void as_machine(std::future<int>&& trace){
+ 		InitEnv();
+		int task_count = 0;
+		int retry_count = 0;
+		// int starve_count = 0;
+		int limit = 500;
+		while( retry_count < limit && trace.wait_for(std::chrono::seconds(0)) != std::future_status::ready ){ // no thread is closing it
+			std::shared_ptr<Task> current;
+			bool ret = tasks.pop_hard(current);
+			if(ret){
+				switch(current->call()){
+					case Task::kFinished:
+					break;
+					case Task::kReady:
+					{
+						// back to pool
+						FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+						if(!handle.push_hard(current)){
+							colog << "push fail";
+						}	
+					}
+					break;
+					case Task::kWaiting:
+					{
+						int id = wait_queue.push(current);
+						// protect_waiters.lock();
+						// int id = wait_queue.size();
+						// wait_queue.push_back(current);
+						// protect_waiters.unlock();
+						FiberData::trigger->Register(id);
+						FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+						if(!handle.push_hard(FiberData::wait_for_task)){
+							colog << "push fail";
+						}	
+					}
+					break;
+				}
+				retry_count = 0;
+				task_count ++;
+			}
+			else{
+				retry_count ++;
+			}
+		}
+		colog << std::string("main thread scheduled ") + std::to_string(task_count);
+ 	}
  	~ThreadPool(){
- 		close();
+		close();
  		report();
  	}
  	void resize(size_t newSize){
@@ -189,10 +236,8 @@ class ThreadPool: public NoMove{
 
 }; // ThreadPool
 
-ThreadPool kPool;
-
+extern ThreadPool kPool;
 
 } // namespace coplus
 
 
-#endif // COPLUS_THREADING_H_
