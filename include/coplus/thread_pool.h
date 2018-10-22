@@ -78,7 +78,7 @@ class ThreadPool: public NoMove{
 		int retry_count = 0;
 		// int starve_count = 0;
 		int limit = 500;
-		while( retry_count < limit && trace.wait_for(std::chrono::seconds(0)) != std::future_status::ready ){ // no thread is closing it
+		while( retry_count < limit || trace.wait_for(std::chrono::seconds(0)) != std::future_status::ready ){ // no thread is closing it
 			std::shared_ptr<Task> current;
 			bool ret = tasks.pop_hard(current);
 			if(ret){
@@ -105,7 +105,7 @@ class ThreadPool: public NoMove{
 						FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
 						if(!handle.push_hard(FiberData::wait_for_task)){
 							colog << "push fail";
-						}	
+						}
 					}
 					break;
 				}
@@ -116,7 +116,7 @@ class ThreadPool: public NoMove{
 				retry_count ++;
 			}
 		}
-		colog << std::string("main thread scheduled ") + std::to_string(task_count);
+		colog << std::to_string(task_count) + " jobs scheduled by main()";
  	}
  	~ThreadPool(){
 		close();
