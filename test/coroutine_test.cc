@@ -52,7 +52,7 @@ int coplus::main(int argc, char** argv){
 	colog << "this is main()";
 	// computing here to wait for main scheduler ready
 	colog << compute(100000);
-	int count = 100;
+	int count = 1000;
 	int total = 0;
 	while(count --){
 	  auto trace = await([]{return compute(100);});

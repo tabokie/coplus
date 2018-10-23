@@ -28,7 +28,7 @@ class ThreadPool: public NoMove{
 	PushOnlyFastStack<std::shared_ptr<Task>> wait_queue;
  	// std::mutex protect_waiters;
 	// std::vector<std::shared_ptr<Task>> wait_queue;
- 	ThreadPool(){
+ 	ThreadPool(): wait_queue(1000) {
  		threadSize = std::thread::hardware_concurrency(); // one for main thread
  		for(int i = 0; i < threadSize - 1; i++){
  			machines.push_back( //std::thread(
@@ -77,7 +77,7 @@ class ThreadPool: public NoMove{
 		int task_count = 0;
 		int retry_count = 0;
 		// int starve_count = 0;
-		int limit = 500;
+		int limit = 5000;
 		while( retry_count < limit || trace.wait_for(std::chrono::seconds(0)) != std::future_status::ready ){ // no thread is closing it
 			std::shared_ptr<Task> current;
 			bool ret = tasks.pop_hard(current);
