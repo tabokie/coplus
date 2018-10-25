@@ -127,7 +127,9 @@ All four of them are in essence accomplished by a `register-notify` mechanism. `
 * `Channel`: Message transport tool mocking Go's chan. Current implementation uses std mutex and condition_variable to provide basic function, further optimization will introduce lock-free shared memory.
 * `colog`: Message output tools merely for debug or strong ordering condition, synchronized with plain lock. Enhanced implementation could uses thread local buffer to increase throughput, or `FastQueue` to avoid blocking. 
 * `cotimer`: Thread local timer.
-* `Socket`
+* `Socket`: asynchronic encapsulation of system socket.
+* `rpc`
+* `tasking`: use two queue: stocking queue and waiting queue, to manage concurrent tasking as coarse-grained dependency graph.
 
 ## Benchmark
 
