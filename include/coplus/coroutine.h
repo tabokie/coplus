@@ -53,11 +53,13 @@ std::future<typename std::result_of<FunctionType()>::type> await(FunctionType&& 
 	return ret;
 }
 void await(Trigger trigger);
+void await(float seconds);
 
 
 // trigger //
 // semantic: give target the permission to run, no ordering in current context	
 void notify(Trigger trigger);
+void notify(TriggerData* trigger);
 
 }
 

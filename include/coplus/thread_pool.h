@@ -56,10 +56,12 @@ class ThreadPool: public NoMove{
 	 							// wait_queue.push_back(current);
 	 							// protect_waiters.unlock();
 	 							FiberData::trigger->Register(id);
-	 							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
-	 							if(!handle.push_hard(FiberData::wait_for_task)){
-	 								colog << "push fail";
-	 							}	
+	 							if(FiberData::wait_for_task){ // depend on new job
+									FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+									if(!handle.push_hard(FiberData::wait_for_task)){
+										colog << "push fail";
+									}	
+								}
  							}
  							break;
  						}
@@ -102,9 +104,11 @@ class ThreadPool: public NoMove{
 						// wait_queue.push_back(current);
 						// protect_waiters.unlock();
 						FiberData::trigger->Register(id);
-						FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
-						if(!handle.push_hard(FiberData::wait_for_task)){
-							colog << "push fail";
+						if(FiberData::wait_for_task){ // depend on new job
+							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+							if(!handle.push_hard(FiberData::wait_for_task)){
+								colog << "push fail";
+							}	
 						}
 					}
 					break;
@@ -155,10 +159,12 @@ class ThreadPool: public NoMove{
 		 							// wait_queue.push_back(current);
 		 							// protect_waiters.unlock();
 		 							FiberData::trigger->Register(id);
-		 							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
-		 							if(!handle.push_hard(FiberData::wait_for_task)){
-		 								colog << "push fail";
-		 							}	
+		 							if(FiberData::wait_for_task){ // depend on new job
+										FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);
+										if(!handle.push_hard(FiberData::wait_for_task)){
+											colog << "push fail";
+										}	
+									}
 	 							}
 	 							break;
 	 						}
@@ -232,7 +238,6 @@ class ThreadPool: public NoMove{
 		}
 		return (ret);
 	}
-
 
 }; // ThreadPool
 

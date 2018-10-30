@@ -1,12 +1,12 @@
 #pragma once
 
-#include "colog.h"
+#include "coplus/colog.h"
+#include "coplus/port.h"
 
-#if defined(__WIN32) || defined(__WIN64) || defined(_MSC_VER)
-#define WIN_PORT
+// headers
+#ifdef WIN_PORT
 #include "Windows.h"
-#else
-#define POSIX_PORT
+#elif defined(POSIX_PORT)
 #include "ucontext.h"
 #endif
 

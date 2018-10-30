@@ -112,7 +112,9 @@ Traditional implementation of coroutine includes following interfaces:
 &emsp;&emsp;
 **c)** await for timer
 
-All four of them are in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's 			coroutine address, `Notify` switch to one of its waiters or simply re-submit them as tasks.
+Use Windows API `timerSetEvent()`
+
+All four of them are in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's coroutine address, `Notify` switch to one of its waiters or simply re-submit them as tasks.
 
 ### Concurrent Data Structure
 
@@ -129,7 +131,7 @@ All four of them are in essence accomplished by a `register-notify` mechanism. `
 * `cotimer`: Thread local timer.
 * `Socket`: asynchronic encapsulation of system socket.
 * `rpc`
-* `tasking`: use two queue: stocking queue and waiting queue, to manage concurrent tasking as coarse-grained dependency graph.
+* `tasking`: use two queue: stocking queue and waiting queue, to manage concurrent tasking as coarse-grained dependency graph. of little use for now.
 
 ## Benchmark
 
