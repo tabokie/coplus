@@ -14,7 +14,8 @@
 * [x] Many-to-many thread pool with lock-sync queue
 * [x] Thread pool with wait-free queue
 * [x] Thread pool with coroutine
-* [ ] Concurrent tools
+* [ ] Advance Features including schedule by priority
+* [ ] Concurrent Tools
 
 ## Components
 
@@ -92,7 +93,7 @@ Traditional implementation of coroutine includes following interfaces:
 
 ```c++
   // Use Case
-  Trigger lock = NewTrigger;
+  Trigger lock = NewTrigger();
   int data = -1;
   auto trace = go([&]()-> int{
     while(true){
@@ -110,9 +111,18 @@ Traditional implementation of coroutine includes following interfaces:
   colog << trace.get(); // should be 7 here;
 ```
 &emsp;&emsp;
-**c)** await for timer
+**c)** await for timer: two possible semantics {wait for grant or wait for execution}, latter is for preemptive coroutine.
 
-Use Windows API `timerSetEvent()`
+```c++
+  // Use Case
+  int coplus::main(int argc, char** argv){
+    colog << "this is main()";
+    colog << "wait for 10 seconds";    
+    await(10); // 10 seconds
+    colog << "exit main()...";
+    return 0;
+  }
+```
 
 All four of them are in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's coroutine address, `Notify` switch to one of its waiters or simply re-submit them as tasks.
 
