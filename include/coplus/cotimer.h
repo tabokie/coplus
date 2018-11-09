@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <ctime> /* clock_t, clock() */
-#include <windows.h>
 #include <chrono>
 
 namespace coplus{

@@ -1,6 +1,6 @@
 # coplus
 
-**coplus** is a parallel programming library written in C++11. Currently, it is planned to supports coroutine based on Windows Fiber, thread pool with dynamic scheduler, and Go-like parallel utilities including Channel.
+**coplus** is a parallel programming library written in C++11. At core it provides a non-preemptive thread pool supporting fast tasking and dynamic balancing. Built upon this non-preemptive schedule facility, several concurrent tools including Go-like channel, wait-free queue, async waiting.
 
 
 ## Features
@@ -47,27 +47,23 @@ Traditional implementation of coroutine includes following interfaces:
   Simply store the current state and yield to return to return coroutine. A global area is used to store all undone coroutine, and a waiting coroutine must be re-insert into active task queue.
 
 ```c++
-  // Use Case with void function:
-  ThreadPool pool;
-  pool.go(std::function<void(void)>([&](){
-      colog << "In Loop Visit";
-      int count = 100;
-      while(count --)
-        yield();
-      colog << "Out Loop Visit";
-      return;
-    }));
-  // Use Case with returned function
-  auto trace = pool.go(std::bind([&](int ret)-> int{
-      colog << "In Loop Visit";
-      int count = 100;
-      while(count --)
-        yield();
-      colog << "Out Loop Visit";
-      status = true;
-      return ret;
+  // Use Case to poll a external event
+  auto trace = pool.go(std::bind([&](int input)-> void*{
+      colog << "Start Polling";
+      startEvent(input);
+      int retryCount = 100;
+      while(count --){
+        if(eventStatus == kReady){
+          return getEventResultPointer();
+        }
+        else{
+          yield(); // yield control
+        }
+      }
+      colog << "End Polling";
+      return nullptr;
     }, 42));
-  trace.get(); // expect 42
+  colog << "Task finished? = " << (trace.get() != nullptr);
 ```
 
 * **await**
@@ -92,7 +88,7 @@ Traditional implementation of coroutine includes following interfaces:
 **b)** await for unconditional trigger
 
 ```c++
-  // Use Case
+  // Use Case for synchronization
   Trigger lock = NewTrigger();
   int data = -1;
   auto trace = go([&]()-> int{
@@ -105,10 +101,23 @@ Traditional implementation of coroutine includes following interfaces:
   });
   go([&]{
     data = 7;
-    notify(lock);
+    notify(lock); // assume the waiter is in wait
     return ;
   });
-  colog << trace.get(); // should be 7 here;
+  colog << trace.get(); // should be 7 here
+```
+
+```c++
+  // Use Case for asynchronized IO
+  Trigger IOReady = NewTrigger();
+  Data IOStore = NewStore();
+  void IOCallback(void* p){
+    copy(IOStore, p);
+    IOReady.notify();
+  }
+  startIO(IOCallback);
+  await(IOReady);
+  return true;
 ```
 &emsp;&emsp;
 **c)** await for timer: two possible semantics {wait for grant or wait for execution}, latter is for preemptive coroutine.
@@ -124,7 +133,9 @@ Traditional implementation of coroutine includes following interfaces:
   }
 ```
 
-All four of them are in essence accomplished by a `register-notify` mechanism. `Register` receives a waiter's coroutine address, `Notify` switch to one of its waiters or simply re-submit them as tasks.
+All four of them are in essence accomplished by a `register-notify` mechanism. `Register` bookkeep the caller's running context and address, `Notify` will activate the kept context and resubmit into ready queue.
+
+Based on these powerful async tools, IO operation can by easily managed by trigger, allowing user-level IO scheduling.
 
 ### Concurrent Data Structure
 

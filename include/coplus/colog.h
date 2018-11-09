@@ -64,9 +64,21 @@ struct ConsoleColor {
 		static HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
 		switch(code){
 			case 0:SetConsoleTextAttribute(handle, enmCFC_White | enmCBC_Black);break;
-			case 1:SetConsoleTextAttribute(handle, enmCFC_Yellow | enmCBC_Black);break;
+			case 1:SetConsoleTextAttribute(handle, enmCFC_HighWhite | enmCBC_Black);break;
 			case 2:SetConsoleTextAttribute(handle, enmCFC_Black | enmCBC_Yellow);break;
 			case 3:SetConsoleTextAttribute(handle, enmCFC_Black | enmCBC_Red);break;
+			// red
+			case 4:SetConsoleTextAttribute(handle, enmCFC_Red | enmCBC_Black);break;
+			// green
+			case 5:SetConsoleTextAttribute(handle, enmCFC_Green | enmCBC_Black);break;
+			// blue
+			case 6:SetConsoleTextAttribute(handle, enmCFC_Blue | enmCBC_Black);break;
+			// cyan
+			case 7:SetConsoleTextAttribute(handle, enmCFC_Cyan | enmCBC_Black);break;
+			// purple
+			case 8:SetConsoleTextAttribute(handle, enmCFC_Purple | enmCBC_Black);break;
+			// yellow
+			case 9:SetConsoleTextAttribute(handle, enmCFC_Yellow | enmCBC_Black);break;
 		}
 	}
 };
@@ -89,7 +101,7 @@ class Colog: public NoMove{
 	Colog& put_batch(Args... xs){
 		std::lock_guard<std::mutex> local(lk);
 		std::cout << ThreadInfo::thread_string();
-		int temp[] = { ((std::cout << xs), std::cout <<", " , 0 )... };
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
 		std::cout << std::endl;
 		return *this;
 	}
@@ -99,7 +111,7 @@ class Colog: public NoMove{
 		std::lock_guard<std::mutex> local(lk);
 		ConsoleColor{}(1);
 		std::cout << ThreadInfo::thread_string();
-		int temp[] = { ((std::cout << xs), std::cout <<", " , 0 )... };
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
 		std::cout << std::endl;
 		ConsoleColor{}(0);
 		return *this;
@@ -109,7 +121,7 @@ class Colog: public NoMove{
 		std::lock_guard<std::mutex> local(lk);
 		ConsoleColor{}(2);
 		std::cout << ThreadInfo::thread_string();
-		int temp[] = { ((std::cout << xs), std::cout <<", " , 0 )... };
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
 		std::cout << std::endl;
 		ConsoleColor{}(0);
 		return *this;
@@ -119,7 +131,67 @@ class Colog: public NoMove{
 		std::lock_guard<std::mutex> local(lk);
 		ConsoleColor{}(3);
 		std::cout << ThreadInfo::thread_string();
-		int temp[] = { ((std::cout << xs), std::cout <<", " , 0 )... };
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
+		std::cout << std::endl;
+		ConsoleColor{}(0);
+		return *this;
+	}
+	template <class ...Args>
+	Colog& red(Args... xs){
+		std::lock_guard<std::mutex> local(lk);
+		ConsoleColor{}(4);
+		std::cout << ThreadInfo::thread_string();
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
+		std::cout << std::endl;
+		ConsoleColor{}(0);
+		return *this;
+	}
+	template <class ...Args>
+	Colog& green(Args... xs){
+		std::lock_guard<std::mutex> local(lk);
+		ConsoleColor{}(5);
+		std::cout << ThreadInfo::thread_string();
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
+		std::cout << std::endl;
+		ConsoleColor{}(0);
+		return *this;
+	}
+	template <class ...Args>
+	Colog& blue(Args... xs){
+		std::lock_guard<std::mutex> local(lk);
+		ConsoleColor{}(6);
+		std::cout << ThreadInfo::thread_string();
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
+		std::cout << std::endl;
+		ConsoleColor{}(0);
+		return *this;
+	}
+	template <class ...Args>
+	Colog& cyan(Args... xs){
+		std::lock_guard<std::mutex> local(lk);
+		ConsoleColor{}(7);
+		std::cout << ThreadInfo::thread_string();
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
+		std::cout << std::endl;
+		ConsoleColor{}(0);
+		return *this;
+	}
+	template <class ...Args>
+	Colog& purple(Args... xs){
+		std::lock_guard<std::mutex> local(lk);
+		ConsoleColor{}(8);
+		std::cout << ThreadInfo::thread_string();
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
+		std::cout << std::endl;
+		ConsoleColor{}(0);
+		return *this;
+	}
+	template <class ...Args>
+	Colog& yellow(Args... xs){
+		std::lock_guard<std::mutex> local(lk);
+		ConsoleColor{}(9);
+		std::cout << ThreadInfo::thread_string();
+		int temp[] = { ((std::cout << xs), std::cout <<" " , 0 )... };
 		std::cout << std::endl;
 		ConsoleColor{}(0);
 		return *this;
