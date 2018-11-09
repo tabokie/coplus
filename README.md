@@ -115,9 +115,14 @@ Traditional implementation of coroutine includes following interfaces:
     copy(IOStore, p);
     IOReady.notify();
   }
-  startIO(IOCallback);
-  await(IOReady);
-  return true;
+  auto NewIOWorker = go([&]{
+    startIO(IOCallback);
+    await(IOReady);
+    displayToTerminal(IOStore);
+    return true;
+  });
+  // Do Non-IO Work Here //
+  return NewIOWorker.get();
 ```
 &emsp;&emsp;
 **c)** await for timer: two possible semantics {wait for grant or wait for execution}, latter is for preemptive coroutine.
