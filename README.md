@@ -108,7 +108,7 @@ Traditional implementation of coroutine includes following interfaces:
 ```
 
 ```c++
-  // Use Case for asynchronized IO
+  // Use Case for asynchronous IO
   Trigger IOReady = NewTrigger();
   Data IOStore = NewStore();
   void IOCallback(void* p){
