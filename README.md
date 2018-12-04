@@ -150,6 +150,10 @@ Based on these powerful async tools, IO operation can by easily managed by trigg
 - `FastLocalQueue`: Provide a multi-consumer single-producer queue structure, which is wait-free and highly optimized.
 - `FastQueue`: A synthesize structure composed of the structures mentioned before. Provide a fully concurrent filo queue structure.
 
+### Parallel Tasking
+
+Based on semantics of await(Task), allow dynamic scheduling of complex inter-thread dependency.
+
 ### Concurrent Tools
 
 * `Channel`: Message transport tool mocking Go's chan. Current implementation uses std mutex and condition_variable to provide basic function, further optimization will introduce lock-free shared memory.
@@ -157,7 +161,7 @@ Based on these powerful async tools, IO operation can by easily managed by trigg
 * `cotimer`: Thread local timer.
 * `Socket`: asynchronic encapsulation of system socket.
 * `rpc`
-* `tasking`: use two queue: stocking queue and waiting queue, to manage concurrent tasking as coarse-grained dependency graph. of little use for now.
+
 
 ## Benchmark
 
