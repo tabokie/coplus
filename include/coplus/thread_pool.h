@@ -25,9 +25,7 @@ class ThreadPool: public NoMove{
 	std::mutex mutating; // for structure mutating, lock all
  public:
 	FastQueue<std::shared_ptr<Task>> tasks;
-	PushOnlyFastStack<std::shared_ptr<Task>> wait_queue;
- 	// std::mutex protect_waiters;
-	// std::vector<std::shared_ptr<Task>> wait_queue;
+	CocurrentVector<std::tuple<bool, std::shared_ptr<Task>> > graph_pool; // store finish bit and waiting pointer
  	ThreadPool(): wait_queue(1000) {
  		threadSize = std::thread::hardware_concurrency(); // one for main thread
  		for(int i = 0; i < threadSize - 1; i++){
@@ -39,7 +37,7 @@ class ThreadPool: public NoMove{
  						switch(current->call()){
  							case Task::kFinished:
  							break;
- 							case Task::kReady:
+ 							case Task::kReady: // some dependencies are not satisfied
  							{
 	 							// back to pool
 	 							FastQueue<std::shared_ptr<Task>>::ProducerHandle handle(&tasks);

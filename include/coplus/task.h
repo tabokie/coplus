@@ -7,6 +7,13 @@
 
 namespace coplus{
 
+struct TaskNode {
+	String name;
+	int id;
+	TaskNode(String n): name(n), id() { }
+};
+
+
 struct Task: public NoMove {
 	enum TaskStatus{
 		kUnknown = 0,
@@ -15,6 +22,9 @@ struct Task: public NoMove {
 		kWaiting = 3
 	};
 	TaskStatus status = kUnknown;
+	TaskNode node;
+	Task(String name): node(name) { }
+	Task(): node(cotimer.timestamp_string()) { }
 	virtual TaskStatus call() = 0; // return false if not completed
 	virtual ~Task() {}
 	virtual void raw_call() = 0;

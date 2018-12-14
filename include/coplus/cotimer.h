@@ -23,6 +23,7 @@ class Cotimer{
   	std::chrono::duration<double> elapsed = b - a;
   	return elapsed.count();
  	}
+ 	
  private:
  	inline ClockType& variables(bool flag){ // true for start, false for end
  		thread_local ClockType start_ = std::chrono::high_resolution_clock::now();
