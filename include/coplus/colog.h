@@ -11,9 +11,6 @@
 
 #include "coplus/util.h"
 #include "coplus/port.h"
-#ifdef WIN_PORT
-#include <Windows.h>
-#endif
 
 namespace coplus {
 

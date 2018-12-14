@@ -3,13 +3,6 @@
 #include "coplus/colog.h"
 #include "coplus/port.h"
 
-// headers
-#ifdef WIN_PORT
-#include "Windows.h"
-#elif defined(POSIX_PORT)
-#include "ucontext.h"
-#endif
-
 namespace coplus {
 
 // Type Declare //

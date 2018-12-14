@@ -3,10 +3,6 @@
 #include "coplus/port.h"
 #include "coplus/fiber_task.h"
 
-#ifdef WIN_PORT
-#include <Windows.h>
-#endif
-
 namespace coplus{
 
 class AsyncTimer{
