@@ -63,7 +63,6 @@ class Client {
  	int buffer_len_;
  public:
  	Client(int bufflen = 512): buffer_len_(bufflen) {
-		colog << "init";
  		buffer_ = new char[buffer_len_ + 1];
  	}
  	Client(Client&& rhs)
@@ -72,39 +71,32 @@ class Client {
  				buffer_len_(rhs.buffer_len_),
 		buffer_(rhs.buffer_){
 		rhs.buffer_ = nullptr;
-		colog << "copy by move";
 	}
  	// Client(const Client& rhs) = delete;
  	Client(const Client& rhs)
  			: close_(rhs.close_.load()),
  				socket_(rhs.socket_),
  				buffer_len_(rhs.buffer_len_) {
-		colog << "copy by ref";
  		buffer_ = new char[buffer_len_ + 1];			
  	}
  	~Client() {
-		colog << "~Client";
  		delete [] buffer_;
  	}
  	bool is_closed(void) {
  		return socket_ == INVALID_SOCKET;
  	}
  	bool Connect(std::string ip, std::string port) {
-		colog << __LINE__;
  		if(socket_ != INVALID_SOCKET) return false; // can't just overwrite a using socket
  		struct addrinfo hints, *result, *ptr;
-		colog << __LINE__;
  		ZeroMemory( &hints, sizeof(hints) );
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-		colog << __LINE__;
     hints.ai_protocol = IPPROTO_TCP;
     int iResult = getaddrinfo(ip.c_str(), port.c_str(), &hints, &result);
     if(iResult != 0) {
     	colog.error("address resolve for connet error: ", WSAGetLastError());
     	return false;
     }
-		colog << __LINE__;
    	for(ptr = result; ptr != NULL; ptr = ptr->ai_next) {
    		socket_ = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
    		if(socket_ == INVALID_SOCKET) continue;
@@ -116,7 +108,6 @@ class Client {
    		}
    		break; // find one suitable
    	}
-		colog << __LINE__;
    	freeaddrinfo(result);
    	return socket_ != INVALID_SOCKET;
  	}
@@ -149,9 +140,7 @@ class Client {
  			colog.error("receive failed with error: ", WSAGetLastError());
  			return "";
  		}
-		colog << __LINE__;
  		buffer_[iResult] = '\0';
-		colog << __LINE__;
  		return std::string(buffer_);
  	}
 };

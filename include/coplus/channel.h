@@ -36,34 +36,28 @@ class Channel {
 		std::atomic_store_explicit(&closed, false, std::memory_order_relaxed);
 		// std::atomic_init(&closed, false);
 		// assert(std::atomic_load(&closed) == false);
-		while(true){
-			if(!std::atomic_load(&closed)){
-				// std::lock_quard<std::mutex> lock_buffer(buffer_lock);
-				buffer_lock.lock();
-				if(buffer.size() < BufferCapacity){ // refer to sendq
-					// std::lock_quard<std::mutex> lock_send(sendq_lock);
-					sendq_lock.lock(); // last sendq grated has done sending
-					if(sendq.size() > 0){
-						sendq.front()->notify_one();
-						sendq.pop();
-					}
-					sendq_lock.unlock();
+		while(!closed.load()){
+			// std::lock_quard<std::mutex> lock_buffer(buffer_lock);
+			buffer_lock.lock();
+			if(buffer.size() < BufferCapacity){ // refer to sendq
+				// std::lock_quard<std::mutex> lock_send(sendq_lock);
+				sendq_lock.lock(); // last sendq grated has done sending
+				if(sendq.size() > 0){
+					sendq.front()->notify_one();
+					sendq.pop();
 				}
-				if(buffer.size() > 0){
-					// std::lock_quard<std::mutex> lock_recv(recvq_lock);
-					recvq_lock.lock(); // last receiver has done receiving
-					if(recvq.size() > 0){
-						recvq.front()->notify_one();
-						recvq.pop();	
-					}
-					recvq_lock.unlock();
-				}
-				buffer_lock.unlock();
+				sendq_lock.unlock();
 			}
-			else{
-				colog << "Channel closed." ;
-				break ;
-			}	
+			if(buffer.size() > 0){
+				// std::lock_quard<std::mutex> lock_recv(recvq_lock);
+				recvq_lock.lock(); // last receiver has done receiving
+				if(recvq.size() > 0){
+					recvq.front()->notify_one();
+					recvq.pop();	
+				}
+				recvq_lock.unlock();
+			}
+			buffer_lock.unlock();
 		}
 		return ;
 	}) { scheduler.detach();}

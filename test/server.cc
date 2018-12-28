@@ -27,6 +27,7 @@ int main(int argc, char** argv){
 			if(str == terminator) {
 				colog << "receive terminator";
 				server.Close();
+				break;
 			}
 		}
 	});

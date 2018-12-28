@@ -33,11 +33,9 @@ int main(void) {
 
 	std::thread deamon([&]{ // handle input
 		std::string line;
-		while(!close.load()) {
-			getline(cin, line);
-			colog << "cin before";
+		while(!close.load() && (getline(cin, line), true)) {
 			if(line.size() > 0) mailbox << "cin " + line;
-			colog << "cin after";
+			if(StringUtil::starts_with(line, "exit") || StringUtil::starts_with(line, "7")) break; // or getline block
 		}
 	});
 
@@ -48,44 +46,32 @@ int main(void) {
 	std::vector<std::string> tokens;
 	while(!close.load()) { // schedule
 		cout << ">> ";
-		colog << "schedule before";
 		mailbox >> line;
-		colog << "schedule after";
 		if(StringUtil::starts_with(line, "cin")) {
-			colog << "start examine from cin";
 			tokens.clear();
 			int nToken = StringUtil::split(line, tokens);
 			int command = 0;
-			colog << __LINE__;
 			if(nToken > 1 && StringUtil::starts_with(tokens[1], "exit") ) {
-				colog << __LINE__;
 				close.store(true);
 			}
 			else if(nToken > 1 &&
 			 (command = atoi(tokens[1].c_str())) <= 7 && 
 			 command > 0) {
-				colog << __LINE__;
 				switch(command) {
 					case 1: 
 					if(nToken > 3) {
-						colog << __LINE__;
 						clients.push_back(Client());
-						colog << __LINE__;
 						clients.back().Connect(tokens[2], tokens[3]);
-						colog << __LINE__;
 						connections.push_back(std::thread([&, &cur = clients.back()]{
 							std::string line;
 							while(!close.load()) {
 								line = cur.Receive();
-								colog << __LINE__;
 								if(line.size() == 0 && cur.is_closed()) {
 									colog << "client closed";
 									break;
 								}
 								else {
-									colog << "connect before";
 									mailbox << "server " + line;
-									colog << "connect after";
 								}
 							}
 						}));
@@ -124,7 +110,6 @@ int main(void) {
 			}
 		}
 		else if( StringUtil::starts_with(line, "server") ){
-			colog << "start examine from server";
 			cout << (line.c_str() + 7) << endl;
 		}
 	}
