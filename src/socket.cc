@@ -1,3 +1,3 @@
 #include "coplus/socket.h"
 
-const coplus::WSAProof coplus::Server::wsa_ = coplus::WSAProof();
+const coplus::WSAProof coplus::WSAProof::wsa_ = coplus::WSAProof();

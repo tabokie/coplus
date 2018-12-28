@@ -26,13 +26,12 @@ int main(int argc, char** argv){
 		while(std::cin >> str) {
 			if(str == terminator) {
 				colog << "receive terminator";
-				close.store(true);
-				closesocket(socket);
+				server.Close();
 			}
 		}
 	});
 	// serve single socket
-	server.serve(
+	server.Serve(
 		socket, 
 		// response when receiving client message
 		[&](SOCKET sender, std::string message)-> std::string {
@@ -49,23 +48,23 @@ int main(int argc, char** argv){
 				return server.name();
 			}
 			else if(message.compare(start,4, markers, 10, 4) == 0) {
-				return server.listToString();
+				return server.database_string();
 			}
 			else if(message.compare(start,5, markers, 15, 5) == 0) { // relay80:...
 				int id = atoi(message.c_str() + 5);
-				SOCKET target = server.lookupClient(id);
+				SOCKET target = server.GetClient(id);
 				if(target == INVALID_SOCKET) return "invalid relay target";
 				start = message.find(":");
 				if(target == sender) { // to avoid buffering
 					return std::string("relay back: ") + message.substr(start + 1);
 				}
 				else{
-					return std::string("relay status: ") + std::to_string(server.relay(sender, target, message.substr(start + 1)));
+					return std::string("relay status: ") + std::to_string(server.Relay(sender, target, message.substr(start + 1)));
 				}		
 			}
 			return "invalid request";
-		},
-		// callback to close server
-		[&]()-> bool { return !close.load(); } );
+		}
+	);
+	daemon.join();
 	return 0;
 }

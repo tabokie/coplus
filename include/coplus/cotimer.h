@@ -25,7 +25,8 @@ class Cotimer{
  	}
  	std::string describe(void) {
 		time_t t = time(NULL);
- 		tm* info = localtime(&t);
+		tm* info;
+		auto err = localtime_s(info, &t);
  		return std::to_string(info->tm_year + 1900) + "-" +
 		  std::to_string(info->tm_mon + 1) + "-" +
 		  std::to_string(info->tm_mday) + " " +

@@ -2,8 +2,11 @@
 
 #include "port.h" // WIN_PORT
 #include "colog.h" // colog
+#include "util.h"
 
 #include <iostream>
+#include <istream>
+#include <ostream>
 #include <vector>
 #include <future>
 #include <thread>
@@ -34,7 +37,11 @@ struct WSAProof {
  private:
 	WSADATA wsa_data_;
 	int startup_result_;
+ 	static const WSAProof wsa_; // shared by Server and Client
  public:
+ 	static bool Ok(void) { // why can't const?
+ 		return wsa_.ok();
+ 	}
  	WSAProof(){
 		startup_result_ = WSAStartup(MAKEWORD(2,2), &wsa_data_);
 	}
@@ -43,11 +50,116 @@ struct WSAProof {
 	}
 	bool ok(void) const {
 		return startup_result_ == 0;
-	}
+	} 
 };
 
-class Server {
-	static const WSAProof wsa_;
+// one client handles at most one connection
+class Client {
+
+ private:
+ 	std::atomic<bool> close_ = false;
+ 	SOCKET socket_ = INVALID_SOCKET;
+ 	char* buffer_;
+ 	int buffer_len_;
+ public:
+ 	Client(int bufflen = 512): buffer_len_(bufflen) {
+		colog << "init";
+ 		buffer_ = new char[buffer_len_ + 1];
+ 	}
+ 	Client(Client&& rhs)
+ 			: close_(rhs.close_.load()),
+ 				socket_(rhs.socket_),
+ 				buffer_len_(rhs.buffer_len_),
+		buffer_(rhs.buffer_){
+		rhs.buffer_ = nullptr;
+		colog << "copy by move";
+	}
+ 	// Client(const Client& rhs) = delete;
+ 	Client(const Client& rhs)
+ 			: close_(rhs.close_.load()),
+ 				socket_(rhs.socket_),
+ 				buffer_len_(rhs.buffer_len_) {
+		colog << "copy by ref";
+ 		buffer_ = new char[buffer_len_ + 1];			
+ 	}
+ 	~Client() {
+		colog << "~Client";
+ 		delete [] buffer_;
+ 	}
+ 	bool is_closed(void) {
+ 		return socket_ == INVALID_SOCKET;
+ 	}
+ 	bool Connect(std::string ip, std::string port) {
+		colog << __LINE__;
+ 		if(socket_ != INVALID_SOCKET) return false; // can't just overwrite a using socket
+ 		struct addrinfo hints, *result, *ptr;
+		colog << __LINE__;
+ 		ZeroMemory( &hints, sizeof(hints) );
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+		colog << __LINE__;
+    hints.ai_protocol = IPPROTO_TCP;
+    int iResult = getaddrinfo(ip.c_str(), port.c_str(), &hints, &result);
+    if(iResult != 0) {
+    	colog.error("address resolve for connet error: ", WSAGetLastError());
+    	return false;
+    }
+		colog << __LINE__;
+   	for(ptr = result; ptr != NULL; ptr = ptr->ai_next) {
+   		socket_ = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
+   		if(socket_ == INVALID_SOCKET) continue;
+   		iResult = connect(socket_, ptr->ai_addr, (int)ptr->ai_addrlen);
+   		if(iResult == SOCKET_ERROR) {
+   			closesocket(socket_);
+   			socket_ = INVALID_SOCKET;
+   			continue;
+   		}
+   		break; // find one suitable
+   	}
+		colog << __LINE__;
+   	freeaddrinfo(result);
+   	return socket_ != INVALID_SOCKET;
+ 	}
+ 	void Close() {
+ 		if(socket_ == INVALID_SOCKET) return ;
+ 		int iResult = shutdown(socket_, SD_SEND);
+ 		if(iResult == SOCKET_ERROR) {
+ 			colog.error("error during shutdown: ", WSAGetLastError());
+	 		closesocket(socket_);
+ 		}
+ 		socket_ = INVALID_SOCKET;
+ 	}
+ 	bool Send(std::string message) {
+ 		if(socket_ == INVALID_SOCKET) return false;
+ 		int iResult = send(socket_, message.c_str(), message.length(), 0);
+ 		if(iResult == SOCKET_ERROR) {
+ 			colog.error("send ", message, " error: ", WSAGetLastError());
+ 			return false;
+ 		}
+ 		return true;
+ 	}
+ 	std::string Receive() {
+ 		if(socket_ == INVALID_SOCKET) return "";
+ 		int iResult = recv(socket_, buffer_, buffer_len_, 0);
+ 		if(iResult == 0) {
+ 			socket_ = INVALID_SOCKET;
+ 			return "";
+ 		}
+ 		else if(iResult < 0){
+ 			colog.error("receive failed with error: ", WSAGetLastError());
+ 			return "";
+ 		}
+		colog << __LINE__;
+ 		buffer_[iResult] = '\0';
+		colog << __LINE__;
+ 		return std::string(buffer_);
+ 	}
+};
+
+// able to manage multiple sockets
+// share connectors infomation
+class Server: public NoCopy {
+	// static const WSAProof wsa_;
 	struct ClientSocketInfo {
 		SOCKET handle = INVALID_SOCKET;
 		std::string addr; // ip:port form
@@ -61,14 +173,19 @@ class Server {
 				"}";
 		}
 	};
+	std::mutex database_lock_;
 	std::vector<ClientSocketInfo> database_;
 	std::string name_;
+	std::atomic<bool> close_ = false; // close all socket and on-going connect
+	std::mutex list_lock_;
+	std::vector<SOCKET> delegated_list_;;
  public:
  	Server(std::string n): name_(n) { }
  	std::string name(void) {
  		return name_;
  	}
- 	std::string listToString(void) {
+ 	std::string database_string(void) {
+ 		std::lock_guard<std::mutex> lk(database_lock_);
  		std::string ret;
  		int id = 0;
  		for(auto& client: database_) {
@@ -80,31 +197,50 @@ class Server {
  		}
  		return ret;
  	}
- 	SOCKET lookupClient(int id) {
+
+ 	void Close(void) {
+ 		close_.store(true);
+ 		list_lock_.lock();
+ 		for(auto socket : delegated_list_) {
+ 			closesocket(socket);
+ 		}
+ 		list_lock_.unlock();
+ 	}
+
+ 	SOCKET GetClient(int id) {
+ 		std::lock_guard<std::mutex> lk(database_lock_);
  		if(id < 0 || id >= database_.size()) {
  			return INVALID_SOCKET;
  		}
  		return database_[id].handle;
  	}
- 	void closeClient(int id) {
+ 	void CloseClient(int id) {
+ 		std::lock_guard<std::mutex> lk(database_lock_);
  		if(id < 0 || id >= database_.size()) return;
  		database_[id].status = false;
  		closesocket(database_[id].handle);
  	}
- 	bool relay(SOCKET sender, SOCKET target, std::string message) { // relay
+ 	bool Relay(SOCKET sender, SOCKET target, std::string message) { // relay
  		message = GetPeerAddr(sender) + " send: " + message;
  		int iSendResult = send(target, message.c_str(), message.length(), 0);
  		if(iSendResult == SOCKET_ERROR) return false;
  		return true;
  	}
- 	bool reply(SOCKET sender, std::string message) {
+ 	bool Reply(SOCKET sender, std::string message) {
  		message = GetSocketAddr(sender) + " reply: " + message;
  		int iSendResult = send(sender, message.c_str(), message.length(), 0);
  		if(iSendResult == SOCKET_ERROR) return false;
  		return true;
  	}
+ 	template <typename ResponsFunction>
+ 	bool Serve(SOCKET server, ResponsFunction&& response) {
+ 		list_lock_.lock();
+ 		delegated_list_.push_back(server);
+ 		list_lock_.unlock();
+ 		return Serve(server, std::move(response), [&]()-> bool {return close_.load();});
+ 	}
  	template <typename ResponsFunction, typename CallbackFunction>
- 	bool serve(SOCKET server, ResponsFunction&& response, CallbackFunction&& callback) { // bool callback(bool)
+ 	bool Serve(SOCKET server, ResponsFunction&& response, CallbackFunction&& should_close) {
  		SOCKET client;
  		// std::vector<std::future<bool>> rets;
  		std::vector<std::thread> threads;
@@ -116,13 +252,15 @@ class Server {
  		do {
  			client = accept(server, NULL, NULL); // block here
  			if(client == INVALID_SOCKET) {
- 				if(callback()) // not due to voluntary closing
+ 				if(!should_close()) // not due to voluntary closing
  					colog.error("error when accepting new connection");
  				break; // fatal error
  			}
  			// add client message to database
+ 			database_lock_.lock();
  			database_.push_back(ClientSocketInfo(client, GetPeerAddr(client))) ;
  			int id = database_.size() - 1;
+ 			database_lock_.unlock();
  			// create a new thread
  			threads.push_back(std::thread(std::move([&]()-> bool{
 				char recvbuf[DEFAULT_BUFLEN];
@@ -131,9 +269,9 @@ class Server {
  					int iResult = recv(client, recvbuf, recvbuflen, 0);
  					if(iResult > 0) {
  						recvbuf[iResult] = '\0';
- 						if(!reply(client, response(client, recvbuf))){
+ 						if(!Reply(client, response(client, recvbuf))){
  							colog.error("send error: ", WSAGetLastError() );
- 							closeClient(id);
+ 							CloseClient(id);
  							return false;
  						}
  					}
@@ -142,15 +280,14 @@ class Server {
  					}
  					else {
  						colog.error("recv error: ", WSAGetLastError());
- 						closeClient(id);
+ 						CloseClient(id);
  						return false;
  					}	
-				} while(callback());
-				closeClient(id);
+				} while(!should_close());
+				CloseClient(id);
 				return true;
 			})));
-			threads[threads.size()-1].detach();
- 		} while(callback()); // a success connection, continue?
+ 		} while(!should_close()); // a success connection, continue?
  		// join all subthread
 		std::for_each(threads.begin(), threads.end(), std::mem_fn(&std::thread::join) );
  		closesocket(server);
@@ -161,7 +298,7 @@ class Server {
  		return NewSocket(addr, DEFAULT_PORT);
  	}
  	static SOCKET NewSocket(const char* addr, const char* port) {
-		if(!wsa_.ok())return INVALID_SOCKET;
+		if(!WSAProof::Ok())return INVALID_SOCKET;
 		struct addrinfo *result, *ptr, hints;
 		ZeroMemory(&hints, sizeof(hints));
 		hints.ai_family = AF_UNSPEC;
@@ -193,7 +330,8 @@ class Server {
 			colog.error("get sock addr error");
 			return "";
 		}
-		return std::string(inet_ntoa(addr.sin_addr)) + ":" + std::to_string(ntohs(addr.sin_port));
+		char ipAddr[INET_ADDRSTRLEN];
+		return std::string(inet_ntop(AF_INET, &addr.sin_addr, ipAddr, sizeof(ipAddr))) + ":" + std::to_string(ntohs(addr.sin_port));
 	}
 	static std::string GetPeerAddr(SOCKET socket) {
 		sockaddr_in addr;
