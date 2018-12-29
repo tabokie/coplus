@@ -25,14 +25,14 @@ class Cotimer{
  	}
  	std::string describe(void) {
 		time_t t = time(NULL);
-		tm* info;
-		auto err = localtime_s(info, &t);
- 		return std::to_string(info->tm_year + 1900) + "-" +
-		  std::to_string(info->tm_mon + 1) + "-" +
-		  std::to_string(info->tm_mday) + " " +
-		  std::to_string(info->tm_hour) + ":" +
-		  std::to_string(info->tm_min) + ":" +
-		  std::to_string(info->tm_sec);
+		tm info;
+		auto err = localtime_s(&info, &t);
+ 		return std::to_string(info.tm_year + 1900) + "-" +
+		  std::to_string(info.tm_mon + 1) + "-" +
+		  std::to_string(info.tm_mday) + " " +
+		  std::to_string(info.tm_hour) + ":" +
+		  std::to_string(info.tm_min) + ":" +
+		  std::to_string(info.tm_sec);
  	} 
  private:
  	inline ClockType& variables(bool flag){ // true for start, false for end

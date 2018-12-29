@@ -83,7 +83,7 @@ class Client {
  		delete [] buffer_;
  	}
  	bool is_closed(void) {
- 		return socket_ == INVALID_SOCKET;
+ 		return close_.load() && socket_ == INVALID_SOCKET;
  	}
  	bool Connect(std::string ip, std::string port) {
  		if(socket_ != INVALID_SOCKET) return false; // can't just overwrite a using socket
@@ -94,19 +94,25 @@ class Client {
     hints.ai_protocol = IPPROTO_TCP;
     int iResult = getaddrinfo(ip.c_str(), port.c_str(), &hints, &result);
     if(iResult != 0) {
-    	colog.error("address resolve for connet error: ", WSAGetLastError());
+    	colog.error("error resolving address: ", WSAGetLastError());
+    	return false;
+    } else if(result == NULL) {
+    	colog.error("error: target address is empty");
     	return false;
     }
    	for(ptr = result; ptr != NULL; ptr = ptr->ai_next) {
    		socket_ = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
-   		if(socket_ == INVALID_SOCKET) continue;
    		iResult = connect(socket_, ptr->ai_addr, (int)ptr->ai_addrlen);
    		if(iResult == SOCKET_ERROR) {
+   			colog.error("connect failed", WSAGetLastError());
    			closesocket(socket_);
    			socket_ = INVALID_SOCKET;
    			continue;
    		}
    		break; // find one suitable
+   	}
+   	if(socket_ == INVALID_SOCKET) {
+	   	colog.error("error trying to connect: " , WSAGetLastError());
    	}
    	freeaddrinfo(result);
    	return socket_ != INVALID_SOCKET;
@@ -115,7 +121,7 @@ class Client {
  		if(socket_ == INVALID_SOCKET) return ;
  		int iResult = shutdown(socket_, SD_SEND);
  		if(iResult == SOCKET_ERROR) {
- 			colog.error("error during shutdown: ", WSAGetLastError());
+ 			colog.error("error trying to shutdown: ", WSAGetLastError());
 	 		closesocket(socket_);
  		}
  		socket_ = INVALID_SOCKET;
@@ -124,7 +130,7 @@ class Client {
  		if(socket_ == INVALID_SOCKET) return false;
  		int iResult = send(socket_, message.c_str(), message.length(), 0);
  		if(iResult == SOCKET_ERROR) {
- 			colog.error("send ", message, " error: ", WSAGetLastError());
+ 			colog.error("error sending `", message, "`: ", WSAGetLastError());
  			return false;
  		}
  		return true;
@@ -134,14 +140,17 @@ class Client {
  		int iResult = recv(socket_, buffer_, buffer_len_, 0);
  		if(iResult == 0) {
  			socket_ = INVALID_SOCKET;
+ 			colog.error("error: socket already closed trying to receive");
  			return "";
  		}
  		else if(iResult < 0){
- 			colog.error("receive failed with error: ", WSAGetLastError());
+ 			socket_ = INVALID_SOCKET;
+ 			colog.error("error trying to receive: ", WSAGetLastError());
  			return "";
  		}
- 		buffer_[iResult] = '\0';
- 		return std::string(buffer_);
+ 		std::string ret(iResult, ' ');
+ 		memcpy((void*)ret.c_str(), (void*)buffer_, iResult);
+ 		return ret;
  	}
 };
 
@@ -173,20 +182,20 @@ class Server: public NoCopy {
  	std::string name(void) {
  		return name_;
  	}
- 	std::string database_string(void) {
+ 	void OutputDatabase(std::vector<std::string>& header, std::vector<std::string>& entries) {
  		std::lock_guard<std::mutex> lk(database_lock_);
  		std::string ret;
  		int id = 0;
+ 		header.push_back("id");
+ 		header.push_back("address");
+ 		header.push_back("status");
  		for(auto& client: database_) {
- 			if(id == 0)
- 				ret = client.toString(id);
- 			else
- 				ret = ret + "," + client.toString(id);
+ 			entries.push_back(std::to_string(id));
+ 			entries.push_back(client.addr);
+ 			entries.push_back((client.status ? "on" : "off"));
  			id ++;
  		}
- 		return ret;
  	}
-
  	void Close(void) {
  		close_.store(true);
  		list_lock_.lock();
@@ -209,15 +218,10 @@ class Server: public NoCopy {
  		database_[id].status = false;
  		closesocket(database_[id].handle);
  	}
- 	bool Relay(SOCKET sender, SOCKET target, std::string message) { // relay
- 		message = GetPeerAddr(sender) + " send: " + message;
+ 	bool Send(SOCKET target, std::string message) {
+ 		if(message.size() == 0) return true;
+ 		// message = GetSocketAddr(target) + " reply: " + message;
  		int iSendResult = send(target, message.c_str(), message.length(), 0);
- 		if(iSendResult == SOCKET_ERROR) return false;
- 		return true;
- 	}
- 	bool Reply(SOCKET sender, std::string message) {
- 		message = GetSocketAddr(sender) + " reply: " + message;
- 		int iSendResult = send(sender, message.c_str(), message.length(), 0);
  		if(iSendResult == SOCKET_ERROR) return false;
  		return true;
  	}
@@ -234,7 +238,7 @@ class Server: public NoCopy {
  		// std::vector<std::future<bool>> rets;
  		std::vector<std::thread> threads;
     if (listen(server, SOMAXCONN) == SOCKET_ERROR) { // open listen port
-        colog.error("listen failed with error: ", WSAGetLastError());
+        colog.error("error while listening: ", WSAGetLastError());
         closesocket(server);
         return false;
     }
@@ -258,8 +262,8 @@ class Server: public NoCopy {
  					int iResult = recv(client, recvbuf, recvbuflen, 0);
  					if(iResult > 0) {
  						recvbuf[iResult] = '\0';
- 						if(!Reply(client, response(client, recvbuf))){
- 							colog.error("send error: ", WSAGetLastError() );
+ 						if(!Send(client, response(client, recvbuf, iResult))){
+ 							colog.error("error trying to send: ", WSAGetLastError() );
  							CloseClient(id);
  							return false;
  						}
@@ -268,7 +272,7 @@ class Server: public NoCopy {
  						break;
  					}
  					else {
- 						colog.error("recv error: ", WSAGetLastError());
+ 						colog.error("error during recv: ", WSAGetLastError());
  						CloseClient(id);
  						return false;
  					}	
@@ -296,14 +300,14 @@ class Server: public NoCopy {
     // Resolve the server address and port
     int iResult = getaddrinfo(addr, port, &hints, &result);
     if ( iResult != 0 ) {
-    	colog.error("getaddrinfo failed with error: ", iResult);
+    	colog.error("error resolving address: ", iResult);
     	freeaddrinfo(result);
     	return INVALID_SOCKET;
     }
     SOCKET ret = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     iResult = bind(ret, result->ai_addr, (int)result->ai_addrlen);
     if ( iResult == SOCKET_ERROR) {
-    	colog.error("bind failed with error: " , WSAGetLastError());
+    	colog.error("error binding: " , WSAGetLastError());
     	freeaddrinfo(result);
     	return INVALID_SOCKET;
     }
@@ -316,7 +320,7 @@ class Server: public NoCopy {
 		int len = sizeof(addr);
 		int ret = getsockname(socket,(sockaddr*)&addr,&len);
 		if (ret != 0) {
-			colog.error("get sock addr error");
+			colog.error("error getting sock addr");
 			return "";
 		}
 		char ipAddr[INET_ADDRSTRLEN];
@@ -328,7 +332,7 @@ class Server: public NoCopy {
 		int len = sizeof(addr);
 		int ret = getpeername(socket,(sockaddr*)&addr,&len);
 		if (ret != 0) {
-			colog.error("get sock addr error");
+			colog.error("error getting peer addr");
 			return "";
 		}
 		char ipAddr[INET_ADDRSTRLEN];
