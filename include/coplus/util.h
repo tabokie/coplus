@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COPLUS_UTIL_H_
+#define COPLUS_UTIL_H_
 
 class NoCopy{
  private:
@@ -21,18 +22,19 @@ class NoMove: public NoCopy{
 #include <string>
 
 struct StringUtil {
-	static int split(std::string& str, std::vector<std::string>& ret) {
+	static int split(std::string& str, std::vector<std::string>& ret, int max_partition = -1) {
 		int cur = 0;
 		int to = 0;
 		int count = ret.size();
-		while((cur = str.find_first_not_of(' ', cur)) != std::string::npos) {
+		while( (max_partition <= 0 || ret.size() - count < max_partition - 1 ) && (cur = str.find_first_not_of(' ', cur)) != std::string::npos) {
 			to = str.find_first_of(' ', cur); // find space
 			if(to == std::string::npos) to = str.size();
 			if(to > cur) {
 				ret.push_back(str.substr(cur, to - cur));
 			}
-			cur = to + 1;
+			cur = to;
 		}
+		if(cur < str.size()) ret.push_back(str.substr(cur)); // don;t split tail
 		return ret.size() - count;
 	}
 	static int split(std::string& str, std::string token, std::vector<std::string>& ret) {
@@ -59,3 +61,5 @@ struct StringUtil {
 	}
 
 };
+
+#endif // COPLUS_UTIL_H_

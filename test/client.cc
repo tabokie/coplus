@@ -41,10 +41,12 @@ int main(void) {
 			if(StringUtil::starts_with(line, "exit") || StringUtil::starts_with(line, "7")) break; // or getline block
 		}
 	});
+	std::cout << ">> 1 10.180.168.248 4007\n" << "connection estabilished" << std::endl << ">> \n";
 
 	std::vector<Client> clients; 
 	std::vector<std::thread> connections;
 	std::string line;
+	std::atomic<int> count = 0;
 	// client protocol
 	bool pending = false;
 	std::string pendingStr;
@@ -53,10 +55,10 @@ int main(void) {
 	std::vector<std::string> tokens;
 	while(!close.load()) { // schedule
 		cout << ">> ";
-		mailbox >> line;
+		mailbox >> line; // mailbox is shared between recv thread and cin thread
 		if(StringUtil::starts_with(line, "cin")) {
 			tokens.clear();
-			int nToken = StringUtil::split(line, tokens);
+			int nToken = StringUtil::split(line, tokens, 4);
 			int command = 0;
 			if(nToken > 1 && StringUtil::starts_with(tokens[1], "exit") ) {
 				close.store(true);
@@ -66,11 +68,18 @@ int main(void) {
 			else if(nToken > 1 &&
 			 (command = atoi(tokens[1].c_str())) <= 7 && 
 			 command > 0) {
+			 	// dispatch command
 				switch(command) {
 					case 1: 
 					if(nToken > 3) {
 						clients.push_back(Client());
-						clients.back().Connect(tokens[2], tokens[3]);
+						if(clients.back().Connect(tokens[2], tokens[3])) {
+							std::cout << "connection estabilished" << std::endl;
+						}
+						else {
+							std::cout << "connection broke" << std::endl;
+							continue;
+						}
 						connections.push_back(std::thread([&, &cur = clients.back()]{
 							std::string package;
 							while(!close.load()) {
@@ -91,7 +100,12 @@ int main(void) {
 					else cout << "need connect to a server\n";
 					break;
 					case 3:
-					if(clients.size() > 0) clients.back().Send(Protocol::pickle_message(Protocol::kRequest,"time"));
+					if(clients.size() > 0) {
+						count = 0; // reset counter
+						for(int i = 0; i < 100; i++) {
+							clients.back().Send(Protocol::pickle_message(Protocol::kRequest,"time"));
+						}
+					}
 					else cout << "need connect to a server\n";
 					break;
 					case 4:
@@ -114,49 +128,61 @@ int main(void) {
 					break;
 				}
 			}
-			else {
+			else { // unknown command
 				cout << menu_str;
 			}
 		}
 		else if( StringUtil::starts_with(line, "server") ){ // package from server
-			// cout << (line.c_str() + 7) << endl;
-			line = line.substr(7); // clip program header `server`
-			bool has_head = (line.size() > Protocol::minimum_frame) && 
-				(*((unsigned int*)line.c_str()) == Protocol::app_head);
-			bool has_end = (line.size() > Protocol::minimum_frame) && 
-				(*((unsigned int*)(line.c_str() + line.size() - Protocol::app_terminator_len)) == Protocol::app_terminator);
-			if(has_head) {
-				pending = false; // discard pending message
-				if(has_end) {
-					Protocol::format_message(
-						cout, 
-						line.substr(
-							Protocol::app_head_len, 
-							line.size() - Protocol::app_head_len - Protocol::app_terminator_len
-						)
-					);
-				} else {
-					pending = true;
-					pendingStr = line.substr(
-						Protocol::app_head_len, 
-						line.size() - Protocol::app_head_len - Protocol::app_terminator_len
-					);
+			static auto parse = [&](std::string& in)-> int {
+				std::string head(Protocol::app_head_len, ' ');
+				memcpy((void*)head.c_str(), (void*)&Protocol::app_head, Protocol::app_head_len);
+				std::string tail(Protocol::app_terminator_len, ' ');
+				memcpy((void*)tail.c_str(), (void*)&Protocol::app_terminator, Protocol::app_terminator_len);
+				int h = in.find(head);
+				int t = in.find(tail);
+				bool has_head = (h != std::string::npos);
+				bool has_end = (t != std::string::npos);
+				if(has_head && !pending) {
+					if(has_end) {
+						count++;
+						Protocol::format_message(
+							cout, 
+							in.substr(
+								h + Protocol::app_head_len, 
+								t - h - Protocol::app_head_len
+							)
+						);
+					} else {
+						pending = true;
+						pendingStr = in.substr(
+							h + Protocol::app_head_len, 
+							in.size() - Protocol::app_terminator_len - h - Protocol::app_head_len
+						);
+					}
+				} else if(pending) {
+					if(has_end) { // finish pending messaeg
+						pendingStr += in.substr(0, t);
+						count++;
+						Protocol::format_message(
+							cout, 
+							pendingStr
+						);
+						pending = false;
+						pendingStr.clear();
+					} else {
+						pendingStr += in;
+					}
 				}
-			} else if(pending) {
-				if(has_end) { // finish pending messaeg
-					pendingStr += line.substr(0, line.size() - Protocol::app_terminator_len);
-					Protocol::format_message(cout, pendingStr);
-					pending = false;
-					pendingStr.clear();
-				} else {
-					pendingStr += line;
-				}
-			}
-			// else: discard message with no head
+				return pending ? -1 : t + Protocol::app_terminator_len;
+			};
+			int cur = 7, delta;
+			// parse all package from socket data //
+			while( cur < line.size() && (delta = parse(line.substr(cur))) >= 0) cur += delta;
 		}
 	}
-
 	deamon.join();
 	std::for_each(connections.begin(), connections.end(), std::mem_fn(&std::thread::join));
+	// if(count != 100)std::cout << "total package after `time`: " << 100 << std::endl;
+	std::cout << "total package after `time`: " << count << std::endl;
 	return 0;
 }

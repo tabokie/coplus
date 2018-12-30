@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COPLUS_SOCKET_H_
+#define COPLUS_SOCKET_H_
 
 #include "port.h" // WIN_PORT
 #include "colog.h" // colog
@@ -25,11 +26,6 @@
 
 
 namespace coplus {
-
-// constant for buffer
-#define DEFAULT_BUFLEN 512
-// fallback port
-#define DEFAULT_PORT "27015"
 
 // static setup for windows platform
 struct WSAProof {
@@ -178,6 +174,8 @@ class Server: public NoCopy {
 	std::mutex list_lock_;
 	std::vector<SOCKET> delegated_list_;;
  public:
+ 	static constexpr size_t kDefaultBufferLen = 512;
+ 	static const char* kDefaultPort;
  	Server(std::string n): name_(n) { }
  	std::string name(void) {
  		return name_;
@@ -211,6 +209,13 @@ class Server: public NoCopy {
  			return INVALID_SOCKET;
  		}
  		return database_[id].handle;
+ 	}
+ 	std::string GetAddr(int id) {
+ 		std::lock_guard<std::mutex> lk(database_lock_);
+ 		if(id < 0 || id >= database_.size()) {
+ 			return "";
+ 		}
+ 		return database_[id].addr;
  	}
  	void CloseClient(int id) {
  		std::lock_guard<std::mutex> lk(database_lock_);
@@ -252,20 +257,25 @@ class Server: public NoCopy {
  			// add client message to database
  			database_lock_.lock();
  			database_.push_back(ClientSocketInfo(client, GetPeerAddr(client))) ;
- 			int id = database_.size() - 1;
+ 			// int id = database_.size() - 1;
  			database_lock_.unlock();
  			// create a new thread
- 			threads.push_back(std::thread(std::move([&]()-> bool{
-				char recvbuf[DEFAULT_BUFLEN];
-				int recvbuflen = DEFAULT_BUFLEN;
+ 			int id = database_.size() - 1;
+ 			threads.push_back(std::thread(std::move([&, c=client, id]()-> bool{
+				char recvbuf[kDefaultBufferLen + 1]; // fuck
+				int recvbuflen = kDefaultBufferLen;
 				do{
- 					int iResult = recv(client, recvbuf, recvbuflen, 0);
+ 					int iResult = recv(c, recvbuf, recvbuflen, 0);
  					if(iResult > 0) {
  						recvbuf[iResult] = '\0';
- 						if(!Send(client, response(client, recvbuf, iResult))){
- 							colog.error("error trying to send: ", WSAGetLastError() );
- 							CloseClient(id);
- 							return false;
+ 						std::vector<std::string> resps;
+ 						response(c, recvbuf, iResult, resps);
+ 						for(auto& r: resps) {
+ 							if(!Send(c, r)) {
+	 							colog.error("error trying to send: ", WSAGetLastError() );
+	 							CloseClient(id);
+	 							return false;	
+ 							}
  						}
  					}
  					else if(iResult == 0) { // closed by client
@@ -275,7 +285,7 @@ class Server: public NoCopy {
  						colog.error("error during recv: ", WSAGetLastError());
  						CloseClient(id);
  						return false;
- 					}	
+ 					}
 				} while(!should_close());
 				CloseClient(id);
 				return true;
@@ -288,7 +298,7 @@ class Server: public NoCopy {
  	}
 
  	static SOCKET NewSocket(const char* addr) {
- 		return NewSocket(addr, DEFAULT_PORT);
+ 		return NewSocket(addr, kDefaultPort);
  	}
  	static SOCKET NewSocket(const char* addr, const char* port) {
 		if(!WSAProof::Ok())return INVALID_SOCKET;
@@ -343,3 +353,5 @@ class Server: public NoCopy {
 
 
 }
+
+#endif // COPLUS_SOCKET_H_

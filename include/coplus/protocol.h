@@ -1,5 +1,5 @@
-#ifndef PROTOCOL_H_
-#define PROTOCOL_H_
+#ifndef COPLUS_PROTOCOL_H_
+#define COPLUS_PROTOCOL_H_
 
 #include "coplus/util.h"
 #include "coplus/colog.h"
@@ -15,7 +15,7 @@
 #endif
 
 struct Protocol {
-	// head(4) | type(1) | len(4) | raw_type(1)(optional) | msg(str)(optional) | tail(4)
+	// head(4) | type(1) | len(4) | raw_type(1)(optional) | sender(::x:y:z:zz:p::) | msg(str)(optional) | tail(4)
 	static constexpr size_t app_head_len = 4;
 	static constexpr unsigned int app_head = 0xDEADC0DE; // may have endian issue
 	static constexpr size_t app_terminator_len = 4;
@@ -28,13 +28,16 @@ struct Protocol {
 		kDirect = 2,
 		kResponse = 3
 	};
-	static std::string pickle_message(MessageType type, std::string request, bool is_list = false) {
-		std::string ret = std::string(app_head_len, ' ') + (char)type + std::string(4, ' ') + (is_list?'l':'t') + request + std::string(app_terminator_len, ' ');
+	static std::string pickle_message(MessageType type, std::string request, char raw_type = 't') {
+		std::string ret = std::string(app_head_len, ' ') + (char)type + std::string(4, ' ') + raw_type + request + std::string(app_terminator_len, ' ');
 		memcpy((void*)ret.c_str(), (void*)&app_head, app_head_len);
-		int length = ret.length() - minimum_len;
+		int length = ret.length() - minimum_frame;
 		memcpy((void*)(ret.c_str() + 5), (void*)&length, 4);
 		memcpy((void*)(ret.c_str() + ret.size() - app_terminator_len), (void*)&app_terminator, app_terminator_len);
 		return ret;
+	}
+	static std::string pickle_message(MessageType type, std::string addr, std::string request) {
+		return pickle_message(type, std::string("::") + addr + "::" + request, 'd');
 	}
 	static std::string pickle_message(MessageType type, std::vector<std::string>& header, std::vector<std::string>& entries) {
 		if(header.size() == 0) return "";
@@ -51,7 +54,7 @@ struct Protocol {
 			}
 			ret += ";";
 		}
-		return pickle_message(type, ret, true);
+		return pickle_message(type, ret, 'l');
 	}
 	enum GetType {
 		kGetNothing = 0,
@@ -118,6 +121,12 @@ struct Protocol {
 				}
 				os << "|" << std::endl;
 			}
+		} else if(completeStr[minimum_len] == 'd'){
+			int addr_end = completeStr.find("::", minimum_len + 3);
+			if(addr_end == std::string::npos) os << "sender broke" << std::endl;
+			else os << "sender: " << completeStr.substr(minimum_len + 3, addr_end - minimum_len - 3) << std::endl;
+			os << "message: ";
+			os << (completeStr.c_str() + addr_end + 2) << std::endl;
 		} else {
 			os << "message: " ;
 			os << (completeStr.c_str() + minimum_len + 1) << std::endl;
@@ -127,4 +136,4 @@ struct Protocol {
 	}
 };
 
-#endif // PROTOCOL_H_
+#endif // COPLUS_PROTOCOL_H_
