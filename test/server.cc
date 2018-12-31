@@ -122,7 +122,7 @@ int main(int argc, char** argv){
 					if(target == INVALID_SOCKET) return Protocol::pickle_message(Protocol::kResponse, "invalid relay target");
 					int start = content.find(":");
 					if(target == sender) { // to avoid buffering
-						return Protocol::pickle_message(Protocol::kDirect, server.GetAddr(id), content.substr(start + 1));
+						return Protocol::pickle_message(Protocol::kDirect, Server::GetPeerAddr(sender), content.substr(start + 1));
 					}
 					else{
 						return Protocol::pickle_message(
@@ -131,7 +131,7 @@ int main(int argc, char** argv){
 							std::to_string(
 								server.Send(
 									target, 
-									Protocol::pickle_message(Protocol::kDirect, server.GetAddr(id), content.substr(start + 1))
+									Protocol::pickle_message(Protocol::kDirect, Server::GetPeerAddr(sender), content.substr(start + 1))
 								)
 							)
 						);

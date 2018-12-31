@@ -17,6 +17,7 @@ using std::endl;
 using coplus::Channel;
 using coplus::Client;
 using coplus::colog;
+using coplus::Server;
 
 const char* menu_str = "_____________________________\n"
 	"| Operation Menu: \n"\
@@ -41,7 +42,6 @@ int main(void) {
 			if(StringUtil::starts_with(line, "exit") || StringUtil::starts_with(line, "7")) break; // or getline block
 		}
 	});
-	std::cout << ">> 1 10.180.168.248 4007\n" << "connection estabilished" << std::endl << ">> \n";
 
 	std::vector<Client> clients; 
 	std::vector<std::thread> connections;
@@ -74,7 +74,7 @@ int main(void) {
 					if(nToken > 3) {
 						clients.push_back(Client());
 						if(clients.back().Connect(tokens[2], tokens[3])) {
-							std::cout << "connection estabilished" << std::endl;
+							std::cout << "connection estabilished, you are " << Server::GetSocketAddr(clients.back().get_socket()) << std::endl;
 						}
 						else {
 							std::cout << "connection broke" << std::endl;
@@ -100,12 +100,7 @@ int main(void) {
 					else cout << "need connect to a server\n";
 					break;
 					case 3:
-					if(clients.size() > 0) {
-						count = 0; // reset counter
-						for(int i = 0; i < 100; i++) {
-							clients.back().Send(Protocol::pickle_message(Protocol::kRequest,"time"));
-						}
-					}
+					if(clients.size() > 0) clients.back().Send(Protocol::pickle_message(Protocol::kRequest,"time"));
 					else cout << "need connect to a server\n";
 					break;
 					case 4:
@@ -182,7 +177,5 @@ int main(void) {
 	}
 	deamon.join();
 	std::for_each(connections.begin(), connections.end(), std::mem_fn(&std::thread::join));
-	// if(count != 100)std::cout << "total package after `time`: " << 100 << std::endl;
-	std::cout << "total package after `time`: " << count << std::endl;
 	return 0;
 }
