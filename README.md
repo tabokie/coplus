@@ -1,5 +1,7 @@
 # coplus
 
+![](https://img.shields.io/travis/tabokie/coplus.svg)
+
 **coplus** is a parallel programming library written in C++11. At core it provides a non-preemptive thread pool supporting fast tasking and dynamic balancing. Built upon this non-preemptive schedule facility, efficient concurrent tools are offered including Go-like channel, wait-free queue, async waiting.
 
 
