@@ -17,6 +17,23 @@ class NoMove: public NoCopy{
  	virtual ~NoMove() { }
 };
 
+#include <cassert>
+
+#ifdef COPLUS_DEBUG_
+#define COPLUS_ASSERT(x)		assert(x)
+#else
+#define COPLUS_ASSERT(x)		x
+#endif
+
+// compiler branch prediction //
+#ifdef __GNUC__
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)     __builtin_expect(!!(x), 0)
+#else
+#define likely(x) 			x
+#define unlikely(x)			x
+#endif
+
 #include <vector>
 #include <iostream>
 #include <string>
