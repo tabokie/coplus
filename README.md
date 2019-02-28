@@ -2,13 +2,13 @@
 
 ![](https://img.shields.io/travis/tabokie/coplus.svg)
 
-**coplus** is a parallel programming library written in C++11. At core it provides a non-preemptive thread pool supporting fast tasking and dynamic balancing. Built upon this non-preemptive schedule facility, efficient concurrent tools are offered including Go-like channel, wait-free queue, async waiting.
-
+**coplus** is a parallel programming library written in C++11. It started as an attempt to emulate Go-like concurrency in C++. Now it's growing to be a general parallel programming library aimed at high performance and elegant interface. To accomplish that, coplus is built upon highly-optimized data structure and provides various semantics for different application context.
 
 ## Features
 
-* Scheduler in coplus is mostly based on wait-free structure
-* No dependence on third-party library like boost::context
+* Use of wait-free scheduling structure
+* Easy to read and modify without hacking and dependency on third-party library like boost::context
+* Support various build-in concurrency model.
 
 ## Todos
 * [x] Message Channel
@@ -150,7 +150,14 @@ Based on these powerful async tools, IO operation can by easily managed by trigg
   Also, This structure contains a partial spec for std::unique_ptr which return naked pointer as retrived result.
 - `SlowQueue`: Filo queue sync using a std mutex, used in low-concurrency condition like freelist in `FastQueue`.
 - `FastLocalQueue`: Provide a multi-consumer single-producer queue structure, which is wait-free and highly optimized.
-- `FastQueue`: A synthesize structure composed of the structures mentioned before. Provide a fully concurrent filo queue structure.
+
+Basic idea is two sets of container meta data for accessor to conduct double-check entering.
+
+- `FastQueue`: A synthesized structure composed of the structures mentioned before. Provide a fully concurrent filo queue structure.
+
+Each producer will apply for a thread local buffer which is reusable. Then only race condition between consumers needs to be considered, which can be easily resolved by distributing consumer and support from `FastLocalQueue`.
+
+- `LeveledHashTable`: Multi-layered hash table optimized for concurrent access while mutating.
 
 ### Parallel Tasking
 
