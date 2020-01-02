@@ -6,9 +6,9 @@
 
 ## Features
 
-* Use of wait-free scheduling structure
-* Easy to read and modify without hacking and dependency on third-party library like boost::context
-* Support various build-in concurrency model.
+* Wide use of wait-free data structure
+* Non-hacking code and non-dependency on third-party library like boost::context
+* Various built-in concurrency models
 
 ## Todos
 * [x] Message Channel
