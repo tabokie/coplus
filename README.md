@@ -7,7 +7,7 @@
 ## Features
 
 * Wide use of wait-free data structure
-* Non-hacking code and non-dependency on third-party library like boost::context
+* Non-hacking code and zero-dependency on third-party library like boost::context
 * Various built-in concurrency models
 
 ## Todos
